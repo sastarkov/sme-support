@@ -16,9 +16,9 @@ extract_data <- function(required_year) {
   
   # Список базовых дескрипторов фирмы и данных о ней
   descr <- c(
-    "year", "inn", "ogrn", "region", "creation_date", "dissolution_date",
-    "age", "financial", "okved_section", "okved", "okopf", "okogu",
-    "okfc", "oktmo", "eligible", "filed", "exemption_criteria", "simplified",
+    "year", "inn", "region", "creation_date", "dissolution_date",
+    "age", "okved_section", "okved", "okopf",
+    "okfc", "oktmo", "filed", "simplified",
     "imputed", "articulated", "totals_adjustment", "outlier"
   )
   
@@ -39,6 +39,10 @@ extract_data <- function(required_year) {
   # Загружаем только нужные признаки в требуемый год
   df <- ds %>% 
     filter(year == required_year) %>%
+    filter(!is.na(inn)) %>%                   # отфильтровываем ошибочные записи без inn
+    filter(eligible == 1) %>%                 # оставляем только фирмы, которые обязаны предоставлять отчетность
+    filter(financial == 0) %>%                # оставляем нефинансовые фирмы 
+    filter(exemption_criteria == 'none') %>%  # оставляем не финансовые, не религиозные, не государственные и не новые (IV квартал создания) организации 
     select(all_of(signs_used)) %>%
     collect()
 
@@ -46,8 +50,6 @@ extract_data <- function(required_year) {
 }
 
 df_year <- extract_data(2017)
-
-glimpse(df_year)
 
 write_dataset(df_year, 
               path = "out_RFSD_0stage",
