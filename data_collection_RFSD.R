@@ -46,4 +46,10 @@ extract_data <- function(required_year) {
 }
 
 df_year <- extract_data(2017)
+
 glimpse(df_year)
+
+write_dataset(df_year, 
+              path = "out_RFSD_0stage",
+              partitioning = "year",
+              format = "parquet")
