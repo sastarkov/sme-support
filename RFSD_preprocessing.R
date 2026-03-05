@@ -66,9 +66,9 @@ preprocess <- function(year_list) {
                 format = "parquet",
                 existing_data_behavior = "delete_matching") # корректная перезапись существующих данных
     
-    glue("Данные РББО за {year_one} год успешно предобработаны.")
+    cat(glue("Данные РББО за {year_one} год успешно предобработаны и сохранены."))
   }
 }
 
-preprocess(2018)
+preprocess(2017:2024)
 
