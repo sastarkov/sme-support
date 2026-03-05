@@ -9,7 +9,12 @@ if (!require("dplyr")) {
   library(dplyr)
 }
 
-# Функция для извлечения нужных признаков в заданный год
+if (!require("glue")) {
+  install.packages("glue")
+  library(glue)
+}
+
+# Функция для извлечения нужных признаков в заданный год и предобработки данных
 extract_data <- function(required_year) {
   
   ds <- open_dataset("RFSD") # путь к папке с БД .parquet
@@ -17,9 +22,9 @@ extract_data <- function(required_year) {
   # Список базовых дескрипторов фирмы и данных о ней
   descr <- c(
     "year", "inn", "region", "creation_date", "dissolution_date",
-    "age", "okved_section", "okved", "okopf",
-    "okfc", "oktmo", "filed", "simplified",
-    "imputed", "articulated", "totals_adjustment", "outlier"
+    "age", "okved_section", "okved", "okopf", "okfc", "oktmo", 
+    "filed", "imputed", "simplified", "articulated", "totals_adjustment", 
+    "outlier"
   )
   
   # Список извлекаемых строк бухгалтерской отчетности
@@ -34,14 +39,14 @@ extract_data <- function(required_year) {
     "line_2400"
   ) 
   
-  signs_used <- c(descr, lines) # объединяем списки
+  signs_used <- c(descr, lines) # объединяем списки базовых дескрипторов и строк бухгалтерской отчетности
     
   # Загружаем только нужные признаки в требуемый год
   df <- ds %>% 
     filter(year == required_year) %>%
     filter(!is.na(inn)) %>%                   # отфильтровываем ошибочные записи без inn
     filter(eligible == 1) %>%                 # оставляем только фирмы, которые обязаны предоставлять отчетность
-    filter(financial == 0) %>%                # оставляем нефинансовые фирмы 
+    filter(financial == 0) %>%                # оставляем не финансовые фирмы 
     filter(exemption_criteria == 'none') %>%  # оставляем не финансовые, не религиозные, не государственные и не новые (IV квартал создания) организации 
     select(all_of(signs_used)) %>%
     collect()
@@ -49,9 +54,21 @@ extract_data <- function(required_year) {
   return(df)
 }
 
-df_year <- extract_data(2017)
+# Функция, записывающая новую БД .parquet с предочищенными и отбранными данными
+preprocess <- function(year_list) {
 
-write_dataset(df_year, 
-              path = "out_RFSD_0stage",
-              partitioning = "year",
-              format = "parquet")
+  for(year_one in year_list) {
+  
+    df_year <- extract_data(year_one)
+    write_dataset(df_year, 
+                path = "RFSD_preprocessed",
+                partitioning = "year",
+                format = "parquet",
+                existing_data_behavior = "delete_matching") # корректная перезапись существующих данных
+    
+    glue("Данные РББО за {year_one} год успешно предобработаны.")
+  }
+}
+
+preprocess(2018)
+
