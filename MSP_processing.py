@@ -2,6 +2,7 @@
 import lxml.etree as ET
 import polars as pl
 import zipfile
+import time
 
 from datetime import datetime
 
@@ -122,10 +123,14 @@ def colect_msp_month(zip_path):
     return(month_data)
 
 
+start = time.time()
+
 df = colect_msp_month('MSP/2017/data-01102017-structure-08012016.zip')
 df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
 
+end = time.time()
 
+print(f"Время выполнения:{((end-start)/60):.1f} минут.")
 
 
 
