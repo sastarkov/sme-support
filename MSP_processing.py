@@ -61,6 +61,22 @@ def parse_msp_xml(file_path):
         elem_partnership = doc.find('СвПрогПарт')
         partnership = 1 if elem_partnership is not None else 0
 
+        # запись в виде списка
+
+        record = {
+            'inn': inn,
+            'name': abbr_name, 
+            'region': region,
+            'year_month': status_date,
+            'incl_date': incl_date,
+            'category': category,
+            'new': sign_new,
+            'social': sign_social,
+            'headcount': headcount
+        }
+
+        print(record)
+
 parse_msp_xml('MSP/2017.xml')
         
         
