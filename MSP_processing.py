@@ -4,6 +4,7 @@ import polars as pl
 
 from datetime import datetime
 
+"""Функция парсинга xml, содержащих записи реестра субъектов малого и среднего предпринимательства с сайта ФНС"""
 def parse_msp_xml(xml_path):
 
     records = []
@@ -36,11 +37,14 @@ def parse_msp_xml(xml_path):
         status_year = status_date.strftime("%Y")
 
         """Собираем данные из атрибутов элемента 'Документ'"""
-        incl_date = doc.get('ДатаВклМСП')      # дата включения в реестр МСП: ДД.ММ.ГГГГ
+        incl_date = doc.get('ДатаВклМСП')      
+        incl_date = datetime.strptime(incl_date, "%d.%m.%Y").date()  # дата включения в реестр МСП: YYYY.MM.DD
+
         category = doc.get('КатСубМСП')        # категория МСП('КатСубМСП'): 1 – микропредприятие, 2 – малое, 3 – среднее
         sign_new = doc.get('ПризНовМСП')       # признак вновь созданного: 1 – да, 2 – нет
         sign_social = doc.get('СведСоцПред')   # признак социального предприятия: 1 – да, 2 – нет
-        headcount = doc.get('ССЧР')            # среднесписочная численность работников
+        headcount1 = doc.get('ССЧР')       # среднесписочная численность работников
+        headcount = int(headcount1) if headcount1 is not None else None
        
         """Собираем данные из атрибутов дочернего к 'Документ' элемента 'ОргВклМСП'"""
         # abbr_name = elem_org.get('НаимОргСокр')
@@ -92,6 +96,7 @@ def parse_msp_xml(xml_path):
 a = parse_msp_xml('MSP/2025.xml')
 df = pl.DataFrame(a)
 
+"""Функция для сбора в датафрейм месячных данных из реестра МСП""" 
 def colect_msp_month(zip_path):{
 
 
