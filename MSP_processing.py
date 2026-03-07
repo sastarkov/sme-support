@@ -1,6 +1,7 @@
 
 import lxml.etree as ET
 import polars as pl
+import zipfile
 
 from datetime import datetime
 
@@ -43,8 +44,9 @@ def parse_msp_xml(xml_path):
         category = doc.get('КатСубМСП')        # категория МСП('КатСубМСП'): 1 – микропредприятие, 2 – малое, 3 – среднее
         sign_new = doc.get('ПризНовМСП')       # признак вновь созданного: 1 – да, 2 – нет
         sign_social = doc.get('СведСоцПред')   # признак социального предприятия: 1 – да, 2 – нет
-        headcount1 = doc.get('ССЧР')       # среднесписочная численность работников
-        headcount = int(headcount1) if headcount1 is not None else None
+
+        headcount = doc.get('ССЧР')       # среднесписочная численность работников
+        headcount = int(headcount) if headcount is not None else None
        
         """Собираем данные из атрибутов дочернего к 'Документ' элемента 'ОргВклМСП'"""
         # abbr_name = elem_org.get('НаимОргСокр')
@@ -55,7 +57,10 @@ def parse_msp_xml(xml_path):
 
         """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'"""
         elem_main_OKVED = doc.find('СвОКВЭД/СвОКВЭДОсн')
-        main_OKVED = elem_main_OKVED.get('КодОКВЭД')
+        if elem_main_OKVED is not None:
+            main_OKVED = elem_main_OKVED.get('КодОКВЭД')
+        else:
+            main_OKVED = None
 
         elem_add_OKVED = doc.findall('СвОКВЭД/СвОКВЭДДоп')
         other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED]
@@ -91,18 +96,34 @@ def parse_msp_xml(xml_path):
 
         records.append(record)
 
-    return(records)      
+    df = pl.DataFrame(records)
 
-a = parse_msp_xml('MSP/2025.xml')
-df = pl.DataFrame(a)
+    return(df)      
 
-"""Функция для сбора в датафрейм месячных данных из реестра МСП""" 
-def colect_msp_month(zip_path):{
+"""Функция для сбора в датафрейм месячных данных из zip - файла реестра МСП""" 
+def colect_msp_month(zip_path):
+
+    month_data = pl.DataFrame()
+    with zipfile.ZipFile(zip_path, 'r') as z:
+
+        list_file_xml = z.namelist()
+
+        for file_xml in list_file_xml:
+
+            print(file_xml)
+            f = z.open(file_xml)
+
+            df = parse_msp_xml(f)
+            if df.height == 0 or df.width == 0:
+                continue
+            else:
+                month_data = pl.concat([month_data, df])
+
+    return(month_data)
 
 
-
-}
-        
+df = colect_msp_month('MSP/2017/data-01102017-structure-08012016.zip')
+df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
 
 
 
