@@ -82,8 +82,8 @@ def parse_msp_xml(xml_path):
         """Запись в виде списка"""
         record = {
             'inn': inn,
-            'status_year': status_year,
-            'status_month': status_month,
+            'year': status_year,
+            'month': status_month,
             'inclusion_date': incl_date,
             'region': region,
             'category': category,
@@ -108,17 +108,21 @@ def colect_msp_month(zip_path):
     with zipfile.ZipFile(zip_path, 'r') as z:
 
         list_file_xml = z.namelist()
+        i = 1
 
         for file_xml in list_file_xml:
 
-            print(file_xml)
+            print(f'{i}. {file_xml}.')
             f = z.open(file_xml)
 
             df = parse_msp_xml(f)
+
             if df.height == 0 or df.width == 0:
                 continue
             else:
                 month_data = pl.concat([month_data, df])
+
+            i= i + 1
 
     return(month_data)
 
