@@ -28,7 +28,7 @@ def parse_msp_xml(xml_path):
             continue
 
         elem_org = doc.find('ОргВклМСП')
-        inn = elem_org.get('ИННЮЛ')
+        inn = elem_org.get('ИННЮЛ') if elem_org is not None else None
         if not inn:
             continue
 
@@ -48,20 +48,14 @@ def parse_msp_xml(xml_path):
         headcount = doc.get('ССЧР')       # среднесписочная численность работников
         headcount = int(headcount) if headcount is not None else None
        
-        """Собираем данные из атрибутов дочернего к 'Документ' элемента 'ОргВклМСП'"""
-        # abbr_name = elem_org.get('НаимОргСокр')
-
         """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'"""
         elem_loc = doc.find('СведМН')
-        region = elem_loc.get('КодРегион')
+        region = elem_loc.get('КодРегион') if elem_loc is not None else None
 
         """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'"""
         elem_main_OKVED = doc.find('СвОКВЭД/СвОКВЭДОсн')
-        if elem_main_OKVED is not None:
-            main_OKVED = elem_main_OKVED.get('КодОКВЭД')
-        else:
-            main_OKVED = None
-
+        main_OKVED = elem_main_OKVED.get('КодОКВЭД') if elem_main_OKVED is not None else None
+        
         elem_add_OKVED = doc.findall('СвОКВЭД/СвОКВЭДДоп')
         other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED]
 
@@ -69,14 +63,6 @@ def parse_msp_xml(xml_path):
         elem_license = doc.findall('СвЛиценз')
         license_number_list = [elem.get('НомЛиценз') for elem in elem_license]
         license = '1' if any(x is not None for x in license_number_list) else '2'  # наличие хотя бы одной лицензии на дату внесения сведений, 1 - есть, 2 - нет
-
-        """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвПрод'"""
-        # elem_product = doc.findall('СвПрод')
-        # product_code = [elem.get('КодПрод') for elem in elem_product]
-        
-        """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвПрогПарт'"""
-        # elem_partnership = doc.find('СвПрогПарт')
-        # partnership = 1 if elem_partnership is not None else 0
 
         """Запись в виде списка"""
         record = {
