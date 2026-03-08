@@ -1,4 +1,3 @@
-
 import lxml.etree as ET
 import polars as pl
 import zipfile
@@ -22,8 +21,8 @@ def parse_msp_xml(xml_path):
         if doc.get('ВидСубМСП') != '1':       
             continue                            
     
-        """Пропускаем бессмысленные записи, которые невозможно использовать (нет ИНН, даты состояния) б
-        ез привлечения дополнительных источников данных"""
+        """Пропускаем бессмысленные записи, которые невозможно использовать (нет ИНН, даты состояния) 
+        без привлечения дополнительных источников данных"""
         status_date = doc.get('ДатаСост')
         if not status_date:
             continue
@@ -97,48 +96,40 @@ def parse_msp_xml(xml_path):
 
         records.append(record)
 
-    df = pl.DataFrame(records)
-
-    return(df)      
+    return records      
 
 """Функция для сбора в датафрейм месячных данных из zip - файла реестра МСП""" 
 def colect_msp_month(zip_path):
 
-    month_data = pl.DataFrame()
+    month_data = []
     with zipfile.ZipFile(zip_path, 'r') as z:
 
-        list_file_xml = z.namelist()
-        i = 1
+        list_xmls = z.namelist()
+        i = len(list_xmls)
 
-        for file_xml in list_file_xml:
+        for file_xml in list_xmls:
 
             print(f'{i}. {file_xml}.')
+
             f = z.open(file_xml)
+            month_data.extend(parse_msp_xml(f))
 
-            df = parse_msp_xml(f)
+            i= i - 1
+    
+    df = pl.DataFrame(month_data)
 
-            if df.height == 0 or df.width == 0:
-                continue
-            else:
-                month_data = pl.concat([month_data, df])
+    return df
 
-            i= i + 1
+if __name__ == "__main__":
 
-    return(month_data)
+    start = time.time()
 
+    df = colect_msp_month('MSP/2017/data-01102017-structure-08012016.zip')
+    df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
 
-start = time.time()
+    end = time.time()
 
-df = colect_msp_month('MSP/2017/data-01102017-structure-08012016.zip')
-df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
-
-end = time.time()
-
-print(f"Время выполнения:{((end-start)/60):.1f} минут.")
-
-
-
-
+    print(f"Время выполнения:{((end-start)/60):.1f} минут.")
 
 
 
