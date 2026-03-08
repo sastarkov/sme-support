@@ -5,7 +5,7 @@ import time
 
 from datetime import datetime
 
-"""Функция парсинга xml, содержащих записи реестра субъектов малого и среднего предпринимательства с сайта ФНС"""
+#Функция парсинга одного xml, содержащего записи реестра субъектов малого и среднего предпринимательства с сайта ФНС
 def parse_msp_xml(xml_path):
 
     records = []
@@ -17,14 +17,12 @@ def parse_msp_xml(xml_path):
 
     for doc in documents:
 
-        """Пропускаем ИП и глав КФХ, которые не являются юридическими лицами"""
+        
         if doc.get('ВидСубМСП') != '1':       
-            continue                            
+            continue  #пропускаем ИП и глав КФХ, которые не являются юридическими лицами                              
     
-        """Пропускаем бессмысленные записи, которые невозможно использовать (нет ИНН, даты состояния) 
-        без привлечения дополнительных источников данных"""
-        status_date = doc.get('ДатаСост')
-        if not status_date:
+        status_date = doc.get('ДатаСост')  #Пропускаем бессмысленные записи, которые невозможно использовать  
+        if not status_date:                #(нет ИНН, даты состояния) без привлечения дополнительных источников данных
             continue
 
         elem_org = doc.find('ОргВклМСП')
@@ -32,39 +30,40 @@ def parse_msp_xml(xml_path):
         if not inn:
             continue
 
-        """Извлекаем месяц и год из даты состояния записи""" 
+        #Извлекаем месяц и год из даты состояния записи
         status_date = datetime.strptime(status_date, "%d.%m.%Y")
         status_month = status_date.strftime("%m")
         status_year = status_date.strftime("%Y")
 
-        """Собираем данные из атрибутов элемента 'Документ'"""
+        #Собираем данные из атрибутов элемента 'Документ'
         incl_date = doc.get('ДатаВклМСП')      
         incl_date = datetime.strptime(incl_date, "%d.%m.%Y").date()  # дата включения в реестр МСП: YYYY.MM.DD
 
-        category = doc.get('КатСубМСП')        # категория МСП('КатСубМСП'): 1 – микропредприятие, 2 – малое, 3 – среднее
-        sign_new = doc.get('ПризНовМСП')       # признак вновь созданного: 1 – да, 2 – нет
-        sign_social = doc.get('СведСоцПред')   # признак социального предприятия: 1 – да, 2 – нет
+        category = doc.get('КатСубМСП')  # категория МСП('КатСубМСП'): 1 – микропредприятие, 2 – малое, 3 – среднее
+        sign_new = doc.get('ПризНовМСП')  # признак вновь созданного: 1 – да, 2 – нет
+        sign_social = doc.get('СведСоцПред')  # признак социального предприятия: 1 – да, 2 – нет
 
-        headcount = doc.get('ССЧР')       # среднесписочная численность работников
+        headcount = doc.get('ССЧР')  # среднесписочная численность работников
         headcount = int(headcount) if headcount is not None else None
        
-        """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'"""
+        #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'
         elem_loc = doc.find('СведМН')
         region = elem_loc.get('КодРегион') if elem_loc is not None else None
 
-        """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'"""
+        #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'
         elem_main_OKVED = doc.find('СвОКВЭД/СвОКВЭДОсн')
         main_OKVED = elem_main_OKVED.get('КодОКВЭД') if elem_main_OKVED is not None else None
         
         elem_add_OKVED = doc.findall('СвОКВЭД/СвОКВЭДДоп')
-        other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED]
+        other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED] #список дополнительных кодов
 
-        """Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвЛиценз'"""
+        #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвЛиценз'
         elem_license = doc.findall('СвЛиценз')
         license_number_list = [elem.get('НомЛиценз') for elem in elem_license]
-        license = '1' if any(x is not None for x in license_number_list) else '2'  # наличие хотя бы одной лицензии на дату внесения сведений, 1 - есть, 2 - нет
+        # наличие хотя бы одной лицензии на дату внесения сведений, 1 - есть, 2 - нет
+        license = '1' if any(x is not None for x in license_number_list) else '2'  
 
-        """Запись в виде списка"""
+        #Формируем итоговую запись по субъекту в словарь 
         record = {
             'inn': inn,
             'year': status_year,
@@ -80,17 +79,18 @@ def parse_msp_xml(xml_path):
             'license': license
         }
 
-        records.append(record)
+        records.append(record) # возвращаем список словарей c данными из одного xml
 
     return records      
 
-"""Функция для сбора в датафрейм месячных данных из zip - файла реестра МСП""" 
+#Функция для сбора в датафрейм месячных данных из zip - файла реестра МСП
 def colect_msp_month(zip_path):
 
     month_data = []
+
     with zipfile.ZipFile(zip_path, 'r') as z:
 
-        list_xmls = z.namelist()
+        list_xmls = z.namelist() # список имен xml в zip архиве
         i = len(list_xmls)
 
         for file_xml in list_xmls:
@@ -98,11 +98,11 @@ def colect_msp_month(zip_path):
             print(f'{i}. {file_xml}.')
 
             f = z.open(file_xml)
-            month_data.extend(parse_msp_xml(f))
+            month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
 
             i= i - 1
     
-    df = pl.DataFrame(month_data)
+    df = pl.DataFrame(month_data) # возвращаем месячный датафрейм с данными
 
     return df
 
@@ -116,13 +116,3 @@ if __name__ == "__main__":
     end = time.time()
 
     print(f"Время выполнения:{((end-start)/60):.1f} минут.")
-
-
-
-
-
-          
-
-
-    
-
