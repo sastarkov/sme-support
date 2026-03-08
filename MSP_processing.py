@@ -4,6 +4,7 @@ import zipfile
 import time
 
 from datetime import datetime
+from pathlib import Path
 
 #Функция парсинга одного xml, содержащего записи реестра субъектов малого и среднего предпринимательства с сайта ФНС
 def parse_msp_xml(xml_path):
@@ -110,8 +111,12 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    df = colect_msp_month('MSP/2017/data-01102017-structure-08012016.zip')
-    df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
+    MSP_path = Path('MSP')
+    zips = list(MSP_path.glob('*.zip'))
+
+    for zip in zips:
+        df = colect_msp_month(zip)
+        df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
 
     end = time.time()
 
