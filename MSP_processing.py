@@ -5,6 +5,7 @@ import time
 
 from datetime import datetime
 from pathlib import Path
+from tqdm import tqdm
 
 #Функция парсинга одного xml, содержащего записи реестра субъектов малого и среднего предпринимательства с сайта ФНС
 def parse_msp_xml(xml_path):
@@ -92,27 +93,19 @@ def colect_msp_month(zip_path):
     with zipfile.ZipFile(zip_path, 'r') as z:
 
         list_xmls = z.namelist() # список имен xml в zip архиве
-        i = len(list_xmls)
 
-        for file_xml in list_xmls:
+        for file_xml in tqdm(list_xmls, desc=f"Обработка {zip_path.name}", leave=False):
+            with z.open(file_xml) as f:
+                month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
 
-            print(f'{i}. {file_xml}.')
-
-            f = z.open(file_xml)
-            month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
-
-            i= i - 1
-    
-    df = pl.DataFrame(month_data) # возвращаем месячный датафрейм с данными
-
-    return df
+    return pl.DataFrame(month_data)  # возвращаем месячный датафрейм с данными
 
 if __name__ == "__main__":
 
     start = time.time()
 
     MSP_path = Path('MSP')
-    zips = list(MSP_path.glob('*.zip'))
+    zips = list(MSP_path.glob('*.zip')) # список путей к файлам
 
     for zip in zips:
         df = colect_msp_month(zip)
