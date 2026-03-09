@@ -2,3 +2,4 @@ RFSD
 *.parquet
 RFSD_preprocessed
 MSP
+parsing_MSP_errors.log

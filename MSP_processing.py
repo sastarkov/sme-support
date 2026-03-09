@@ -3,6 +3,7 @@ import polars as pl
 import zipfile
 import time
 import logging
+import pyarrow as pa
 import pyarrow.dataset as ds
 
 from datetime import datetime
@@ -96,7 +97,7 @@ def colect_msp_month(zip_path):
 
         list_xmls = z.namelist() # список имен xml в zip архиве
 
-        for file_xml in tqdm(list_xmls, desc=f"Обработано .xml в {zip_path.name}", leave=True, unit = 'files'):
+        for file_xml in tqdm(list_xmls, desc=f"Обработано .xml в {zip_path.name}", leave=True, unit = ' files'):
             try:
                 with z.open(file_xml) as f:
                     month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
@@ -117,6 +118,10 @@ if __name__ == "__main__":
     zips = list(MSP_path.glob('*.zip')) # список путей к файлам
 
     for zip in zips:
+
+        zip_name = zip.stem
+        postfix = '-'.join(zip_name.split('-')[:2])
+
         df = colect_msp_month(zip)
         if len(df) >0:
             table = df.to_arrow() 
@@ -124,10 +129,10 @@ if __name__ == "__main__":
                 table,
                 base_dir = 'MSP_parsed', 
                 format = 'parquet',
-                partition_by = ['year', 'month'],
+                partitioning = ['year', 'month'],
                 partitioning_flavor = 'hive',
                 existing_data_behavior = 'overwrite_or_ignore',
-                basename_template="part-{i}.parquet"
+                basename_template=f"part-{{i}}_from_{postfix}.parquet"  # добавляем постфикс к имени файла с указанием на источник данных
                 )
 
     end = time.time()
