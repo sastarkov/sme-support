@@ -2,6 +2,7 @@ import lxml.etree as ET
 import polars as pl
 import zipfile
 import time
+import logging
 
 from datetime import datetime
 from pathlib import Path
@@ -100,10 +101,14 @@ def colect_msp_month(zip_path):
                     month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
             except Exception as e:
                 print(f"\nОшибка при открытии {file_xml} в архиве {zip_path.name}: {e}")
-                
+                logging.error(f"В архиве {zip_path.name}, файл {file_xml}: {e}")
+
     return pl.DataFrame(month_data)  # возвращаем месячный датафрейм с данными
 
 if __name__ == "__main__":
+
+    logging.basicConfig(filename='parsing_MSP_errors.log', level=logging.ERROR,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
     start = time.time()
 
