@@ -94,10 +94,13 @@ def colect_msp_month(zip_path):
 
         list_xmls = z.namelist() # список имен xml в zip архиве
 
-        for file_xml in tqdm(list_xmls, desc=f"Обработка {zip_path.name}", leave=False):
-            with z.open(file_xml) as f:
-                month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
-
+        for file_xml in tqdm(list_xmls, desc=f"Обработано .xml в {zip_path.name}", leave=True, unit = 'files'):
+            try:
+                with z.open(file_xml) as f:
+                    month_data.extend(parse_msp_xml(f)) # формируем месячный список словарей (из всех xml в zip)
+            except Exception as e:
+                print(f"\nОшибка при открытии {file_xml} в архиве {zip_path.name}: {e}")
+                
     return pl.DataFrame(month_data)  # возвращаем месячный датафрейм с данными
 
 if __name__ == "__main__":
