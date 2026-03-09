@@ -3,7 +3,7 @@ import polars as pl
 import zipfile
 import time
 import logging
-import pyarrow as pa
+# import pyarrow as pa
 import pyarrow.dataset as ds
 
 from datetime import datetime
