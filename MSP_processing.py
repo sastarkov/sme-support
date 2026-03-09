@@ -3,6 +3,7 @@ import polars as pl
 import zipfile
 import time
 import logging
+import pyarrow.dataset as ds
 
 from datetime import datetime
 from pathlib import Path
@@ -117,7 +118,17 @@ if __name__ == "__main__":
 
     for zip in zips:
         df = colect_msp_month(zip)
-        df.write_parquet('MSP_parsed', partition_by = ['year', 'month'])
+        if len(df) >0:
+            table = df.to_arrow() 
+            ds.write_dataset(
+                table,
+                base_dir = 'MSP_parsed', 
+                format = 'parquet',
+                partition_by = ['year', 'month'],
+                partitioning_flavor = 'hive',
+                existing_data_behavior = 'overwrite_or_ignore',
+                basename_template="part-{i}.parquet"
+                )
 
     end = time.time()
 
