@@ -37,8 +37,8 @@ def parse_msp_xml(xml_path):
 
         #Извлекаем месяц и год из даты состояния записи
         status_date = datetime.strptime(status_date, "%d.%m.%Y")
-        status_month = status_date.strftime("%m")
-        status_year = status_date.strftime("%Y")
+        status_month = int(status_date.strftime("%m"))
+        status_year = int(status_date.strftime("%Y"))
 
         #Собираем данные из атрибутов элемента 'Документ'
         incl_date = doc.get('ДатаВклМСП')      
