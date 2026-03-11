@@ -41,15 +41,15 @@ def parse_msp_xml(xml_path):
         status_year = int(status_date.strftime("%Y"))  # для совместимости с .parquet д.б. числовой тип
 
         #Собираем данные из атрибутов элемента 'Документ'
-        incl_date = doc.get('ДатаВклМСП')      
-        incl_date = datetime.strptime(incl_date, "%d.%m.%Y").date()  # дата включения в реестр МСП: YYYY.MM.DD
+        incl_date_raw = doc.get('ДатаВклМСП')      
+        incl_date = datetime.strptime(incl_date_raw, "%d.%m.%Y").date() if incl_date_raw else None  # дата включения в реестр МСП: YYYY.MM.DD
 
         category = doc.get('КатСубМСП')  # категория МСП('КатСубМСП'): 1 – микропредприятие, 2 – малое, 3 – среднее
         sign_new = doc.get('ПризНовМСП')  # признак вновь созданного: 1 – да, 2 – нет
         sign_social = doc.get('СведСоцПред')  # признак социального предприятия: 1 – да, 2 – нет
 
-        headcount = doc.get('ССЧР')  # среднесписочная численность работников
-        headcount = int(headcount) if headcount is not None else None
+        headcount_raw = doc.get('ССЧР')  # среднесписочная численность работников
+        headcount = float(headcount_raw) if headcount_raw is not None else None
        
         #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'
         elem_loc = doc.find('СведМН')
@@ -104,8 +104,22 @@ def colect_msp_month(zip_path):
             except Exception as e:
                 print(f"\nОшибка при открытии {file_xml} в архиве {zip_path.name}: {e}")
                 logging.error(f"В архиве {zip_path.name}, файл {file_xml}: {e}")
-
-    return pl.DataFrame(month_data)  # возвращаем месячный датафрейм с данными
+    
+    schema_overrides = {
+    'inn': pl.String,
+    'year': pl.Int32,
+    'month': pl.Int32,
+    'inclusion_date': pl.Date,
+    'region': pl.String,
+    'category': pl.String,
+    'sign_new': pl.String,
+    'sign_social': pl.String,
+    'headcount': pl.Float64,
+    'main_OKVED': pl.String,
+    'other_OKVED': pl.List(pl.String),
+    'license': pl.String
+}
+    return pl.DataFrame(month_data, schema_overrides=schema_overrides)  # возвращаем месячный датафрейм с данными
 
 if __name__ == "__main__":
 
