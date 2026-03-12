@@ -49,7 +49,13 @@ def parse_msp_xml(xml_path):
         sign_social = doc.get('СведСоцПред')  # признак социального предприятия: 1 – да, 2 – нет
 
         headcount_raw = doc.get('ССЧР')  # среднесписочная численность работников
-        headcount = float(headcount_raw) if headcount_raw is not None else None
+        if headcount_raw is not None: 
+            try:
+                headcount = float(headcount_raw)
+            except ValueError:
+                headcount = None  # обработчик ошибки, если преобразование типа не удалось
+        else:
+                headcount = None
        
         #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'
         elem_loc = doc.find('СведМН')
