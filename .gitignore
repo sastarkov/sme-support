@@ -1,5 +1,7 @@
-RFSD
+RFSD/*.*
+MSP_aggregated/*.*
+RFSD_preprocessed/*.*
+MSP/*.*
+MSP_parsed/*.*
 *.parquet
-RFSD_preprocessed
-MSP
-parsing_MSP_errors.log
+*.log
