@@ -3,7 +3,6 @@ import polars as pl
 import zipfile
 import time
 import logging
-# import pyarrow as pa
 import pyarrow.dataset as ds
 
 from datetime import datetime
@@ -21,7 +20,6 @@ def parse_msp_xml(xml_path):
     documents = root.findall(".//Документ")
 
     for doc in documents:
-
         
         if doc.get('ВидСубМСП') != '1':       
             continue  #пропускаем ИП и глав КФХ, которые не являются юридическими лицами                              
@@ -55,18 +53,18 @@ def parse_msp_xml(xml_path):
             except ValueError:
                 headcount = None  # обработчик ошибки, если преобразование типа не удалось
         else:
-                headcount = None
+            headcount = None
        
-        #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'
-        elem_loc = doc.find('СведМН')
-        region = elem_loc.get('КодРегион') if elem_loc is not None else None
+        # #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'
+        # elem_loc = doc.find('СведМН')
+        # region = elem_loc.get('КодРегион') if elem_loc is not None else None
 
-        #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'
-        elem_main_OKVED = doc.find('СвОКВЭД/СвОКВЭДОсн')
-        main_OKVED = elem_main_OKVED.get('КодОКВЭД') if elem_main_OKVED is not None else None
+        # #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'
+        # elem_main_OKVED = doc.find('СвОКВЭД/СвОКВЭДОсн')
+        # main_OKVED = elem_main_OKVED.get('КодОКВЭД') if elem_main_OKVED is not None else None
         
-        elem_add_OKVED = doc.findall('СвОКВЭД/СвОКВЭДДоп')
-        other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED] #список дополнительных кодов
+        # elem_add_OKVED = doc.findall('СвОКВЭД/СвОКВЭДДоп')
+        # other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED] #список дополнительных кодов
 
         #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвЛиценз'
         elem_license = doc.findall('СвЛиценз')
@@ -80,13 +78,13 @@ def parse_msp_xml(xml_path):
             'year': status_year,
             'month': status_month,
             'inclusion_date': incl_date,
-            'region': region,
+            # 'region': region,
             'category': category,
             'sign_new': sign_new,
             'sign_social': sign_social,
             'headcount': headcount,
-            'main_OKVED': main_OKVED,
-            'other_OKVED': other_OKVED,
+            # 'main_OKVED': main_OKVED,
+            # 'other_OKVED': other_OKVED,
             'license': license
         }
 
@@ -116,13 +114,13 @@ def colect_msp_month(zip_path):
     'year': pl.Int32,
     'month': pl.Int32,
     'inclusion_date': pl.Date,
-    'region': pl.String,
+    # 'region': pl.String,
     'category': pl.String,
     'sign_new': pl.String,
     'sign_social': pl.String,
     'headcount': pl.Float64,
-    'main_OKVED': pl.String,
-    'other_OKVED': pl.List(pl.String),
+    # 'main_OKVED': pl.String,
+    # 'other_OKVED': pl.List(pl.String),
     'license': pl.String
 }
     return pl.DataFrame(month_data, schema_overrides=schema_overrides)  # возвращаем месячный датафрейм с данными
