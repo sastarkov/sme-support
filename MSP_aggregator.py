@@ -1,6 +1,39 @@
 import polars as pl
 import time
 
+def prepare_datasetMSP(dataset_path):
+
+    lf = pl.scan_parquet(dataset_path)
+
+    keep_columns = [
+    "inn", "month", "inclusion_date",
+    "category", "sign_new", "sign_social", 
+    "headcount", "license"
+    ]
+
+    target_types = {
+    "inn": pl.String,
+    "month": pl.Int32,
+    "inclusion_date": pl.Date,
+    "category": pl.String,
+    "sign_new": pl.String,
+    "sign_social": pl.String,
+    "headcount": pl.Float64,
+    "license": pl.String,
+    }
+
+    lf_clean = lf.select(keep_columns)
+
+    cast_exprs = [pl.col(col).cast(dtype).alias(col) for col, dtype in target_types.items()]
+    lf_clean = lf_clean.with_columns(cast_exprs)
+
+    lf_clean.sink_parquet(
+
+        pl.PartitionBy("MSP_parsed2/",
+        key = ["month"])  # сохраняем партиционирование
+
+        )
+
 def aggregate_msp(lf):
 
     """
@@ -57,30 +90,47 @@ def aggregate_msp(lf):
 
 if __name__ == "__main__":
 
-    start = time.time()
+    prepare_datasetMSP('MSP_parsed/year=2024')
+    # test_year = 2025
+    # start = time.time()
 
-    lf = pl.scan_parquet("MSP_parsed/",
-    schema={
-        "inn": pl.String,
-        "year": pl.Int32,
-        "month": pl.Int32,
-        "inclusion_date": pl.Date,
-        "region": pl.String,
-        "category": pl.String,
-        "sign_new": pl.String,
-        "sign_social": pl.String,
-        "headcount": pl.Float64,
-        "main_OKVED": pl.String,
-        "other_OKVED": pl.List,
-        "license": pl.String
-        }
-).filter(pl.col("year") == 2020)
+    # lf = pl.scan_parquet("MSP_parsed/",
+    # schema={
+    #     "inn": pl.String,
+    #     "year": pl.Int32,
+    #     "month": pl.Int32,
+    #     "inclusion_date": pl.Date,
+    #     "region": pl.String,
+    #     "category": pl.String,
+    #     "sign_new": pl.String,
+    #     "sign_social": pl.String,
+    #     "headcount": pl.Float64,
+    #     "main_OKVED": pl.String,
+    #     "other_OKVED": pl.List,
+    #     "license": pl.String
+    #     }
+    # ).filter(pl.col("year") == test_year)
 
-    df = aggregate_msp(lf).collect()
+    # df = aggregate_msp(lf).collect()
 
-    end = time.time()
-    print(f"Время выполнения:{((end-start)/60):.1f} минут.")
+    # end = time.time()
+    # print(f"Время выполнения:{(end-start):.0f} секунд.")
 
-    random_inn = df.sample(n=1)['inn'].item()
+    # random_inn = df.sample(n=1)['inn'].item()
 
-    df_test = pl.scan_parquet("MSP_parsed/").filter(pl.col("year") == 2020, pl.col("inn") == random_inn).collect()
+    # df_test = pl.scan_parquet("MSP_parsed/",
+    # schema={
+    #     "inn": pl.String,
+    #     "year": pl.Int32,
+    #     "month": pl.Int32,
+    #     "inclusion_date": pl.Date,
+    #     "region": pl.String,
+    #     "category": pl.String,
+    #     "sign_new": pl.String,
+    #     "sign_social": pl.String,
+    #     "headcount": pl.Float64,
+    #     "main_OKVED": pl.String,
+    #     "other_OKVED": pl.List(pl.String),
+    #     "license": pl.String
+    #     }
+    # ).filter(pl.col("year") == test_year, pl.col("inn") == '0261044588').collect()
