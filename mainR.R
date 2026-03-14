@@ -23,10 +23,12 @@ if (!require("here")) {
   library(here)
 }
 
-source(here("R", "MSP_preprocessing.R"))
+source(here("R", "RFSD_preprocessing.R")) # подключает файл с функциями для предобработки исходных данных из РББО
+source(here("R", "MSP_preprocessing.R")) # подключает файл с функциями для предобработки исходных спарсенных данных из реестра МСП
 
 tic('Время выполнения:')
 
-find_dupl("MSP_parsed", 2017:2024)
+# preprocess(2017:2024) # отбирает данные из РББО
+find_dupl(here("MSP_parsed"), 2017:2025) # проверяет наличие дубликатов записей (ИНН&год&месяц) в БД со спарсенными данными из реестра МСП
 
 toc()
