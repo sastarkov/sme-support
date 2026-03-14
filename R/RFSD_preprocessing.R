@@ -69,6 +69,3 @@ preprocess <- function(year_list) {
     writeLines(glue("Данные РББО за {year_one} год успешно предобработаны и сохранены."))
   }
 }
-
-preprocess(2017:2024)
-
