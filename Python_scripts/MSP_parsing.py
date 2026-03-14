@@ -1,7 +1,6 @@
 import lxml.etree as ET
 import polars as pl
 import zipfile
-import time
 import logging
 import pyarrow.dataset as ds
 
@@ -46,7 +45,8 @@ def parse_msp_xml(xml_path):
         sign_new = doc.get('ПризНовМСП')  # признак вновь созданного: 1 – да, 2 – нет
         sign_social = doc.get('СведСоцПред')  # признак социального предприятия: 1 – да, 2 – нет
 
-        headcount_raw = doc.get('ССЧР')  # среднесписочная численность работников
+        # среднесписочная численность работников
+        headcount_raw = doc.get('ССЧР')  
         if headcount_raw is not None: 
             try:
                 headcount = float(headcount_raw)
@@ -55,17 +55,6 @@ def parse_msp_xml(xml_path):
         else:
             headcount = None
        
-        # #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СведМН'
-        # elem_loc = doc.find('СведМН')
-        # region = elem_loc.get('КодРегион') if elem_loc is not None else None
-
-        # #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвОКВЭД'
-        # elem_main_OKVED = doc.find('СвОКВЭД/СвОКВЭДОсн')
-        # main_OKVED = elem_main_OKVED.get('КодОКВЭД') if elem_main_OKVED is not None else None
-        
-        # elem_add_OKVED = doc.findall('СвОКВЭД/СвОКВЭДДоп')
-        # other_OKVED = [elem.get('КодОКВЭД') for elem in elem_add_OKVED] #список дополнительных кодов
-
         #Собираем данные из атрибутов дочернего к 'Документ' элемента 'СвЛиценз'
         elem_license = doc.findall('СвЛиценз')
         license_number_list = [elem.get('НомЛиценз') for elem in elem_license]
@@ -78,13 +67,10 @@ def parse_msp_xml(xml_path):
             'year': status_year,
             'month': status_month,
             'inclusion_date': incl_date,
-            # 'region': region,
             'category': category,
             'sign_new': sign_new,
             'sign_social': sign_social,
             'headcount': headcount,
-            # 'main_OKVED': main_OKVED,
-            # 'other_OKVED': other_OKVED,
             'license': license
         }
 
@@ -109,30 +95,26 @@ def colect_msp_month(zip_path):
                 print(f"\nОшибка при открытии {file_xml} в архиве {zip_path.name}: {e}")
                 logging.error(f"В архиве {zip_path.name}, файл {file_xml}: {e}")
     
-    schema_overrides = {
+    schema_overrides = {  # для дальнейшего упорядочивания работы с типами переопределим автоматические
     'inn': pl.String,
     'year': pl.Int32,
     'month': pl.Int32,
     'inclusion_date': pl.Date,
-    # 'region': pl.String,
     'category': pl.String,
     'sign_new': pl.String,
     'sign_social': pl.String,
     'headcount': pl.Float64,
-    # 'main_OKVED': pl.String,
-    # 'other_OKVED': pl.List(pl.String),
     'license': pl.String
 }
     return pl.DataFrame(month_data, schema_overrides=schema_overrides)  # возвращаем месячный датафрейм с данными
 
-if __name__ == "__main__":
+#Функция парсинга всех исходных *.xml.zip  в указанной папке
+def parse_MSP(MSP_in, MSP_out):
 
     logging.basicConfig(filename='parsing_MSP_errors.log', level=logging.ERROR,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+    format='%(asctime)s - %(levelname)s - %(message)s')
 
-    start = time.time()
-
-    MSP_path = Path('MSP')
+    MSP_path = Path(MSP_in)
     zips = list(MSP_path.glob('*.zip')) # список путей к файлам
 
     for zip in zips:
@@ -145,7 +127,7 @@ if __name__ == "__main__":
             table = df.to_arrow() 
             ds.write_dataset(
                 table,
-                base_dir = 'MSP_parsed', 
+                base_dir = MSP_out, 
                 format = 'parquet',
                 partitioning = ['year', 'month'],
                 partitioning_flavor = 'hive',
@@ -153,6 +135,40 @@ if __name__ == "__main__":
                 basename_template=f"part-{{i}}_from_{postfix}.parquet"  # добавляем постфикс к имени файла с указанием на источник данных
                 )
 
-    end = time.time()
 
-    print(f"Время выполнения:{((end-start)/60):.1f} минут.")
+
+
+
+
+
+# if __name__ == "__main__":
+
+#     logging.basicConfig(filename='parsing_MSP_errors.log', level=logging.ERROR,
+#                     format='%(asctime)s - %(levelname)s - %(message)s')
+
+#     start = time.time()
+
+#     MSP_path = Path('MSP')
+#     zips = list(MSP_path.glob('*.zip')) # список путей к файлам
+
+#     for zip in zips:
+
+#         zip_name = zip.stem
+#         postfix = '-'.join(zip_name.split('-')[:2])
+
+#         df = colect_msp_month(zip)
+#         if len(df) >0:
+#             table = df.to_arrow() 
+#             ds.write_dataset(
+#                 table,
+#                 base_dir = 'MSP_parsed', 
+#                 format = 'parquet',
+#                 partitioning = ['year', 'month'],
+#                 partitioning_flavor = 'hive',
+#                 existing_data_behavior = 'overwrite_or_ignore',
+#                 basename_template=f"part-{{i}}_from_{postfix}.parquet"  # добавляем постфикс к имени файла с указанием на источник данных
+#                 )
+
+#     end = time.time()
+
+#     print(f"Время выполнения:{((end-start)/60):.1f} минут.")

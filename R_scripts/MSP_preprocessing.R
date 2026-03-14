@@ -1,22 +1,17 @@
-# if (!require("tictoc")) {
-#   install.packages("tictoc")
-#   library(tictoc)
-# }
+if (!require("arrow")) {
+  install.packages("arrow")
+  library(arrow)
+}
 
-# if (!require("arrow")) {
-#   install.packages("arrow")
-#   library(arrow)
-# }
+if (!require("dplyr")) {
+  install.packages("dplyr")
+  library(dplyr)
+}
 
-# if (!require("dplyr")) {
-#   install.packages("dplyr")
-#   library(dplyr)
-# }
-
-# if (!require("glue")) {
-#   install.packages("glue")
-#   library(glue)
-# }
+if (!require("glue")) {
+  install.packages("glue")
+  library(glue)
+}
 
 #Функция поиска дупликатов по inn в пределах месячных данных
 # find_dupl <- function(path_to_data) {
@@ -59,25 +54,24 @@ find_dupl <- function(dir_data, year_list) {
   return(all_dupl)
 }
 
-
-# Функция для удаления дубликатов записей в спарсенном датасете МСП
+# Функция для удаления дубликатов записей в спарсенном датасете МСП в конкретный год
 clean_dupl <- function(dir_data, year_one) {
 
-ds <- open_dataset(glue("{dir_data}/year={year_one}"))
+  ds <- open_dataset(glue("{dir_data}/year={year_one}"))
 
-# Дедупликация
-clean_data <- ds %>%
-  distinct(month, inn, .keep_all = TRUE)
+  # Дедупликация
+  clean_data <- ds %>%
+    distinct(month, inn, .keep_all = TRUE)
 
-# Запись в НОВУЮ папку
-write_dataset(
-  clean_data,
-  glue("{dir_data}_cleaned/year={year_one}"),  # Новый путь
-  format = "parquet",
-  partitioning = c("month")  # Сохраняем структуру партиций
-)
-print(glue("Данные за {year_one} год очищены и помещены в папку {{dir_data}_cleaned}"))
-}
+  # Запись в НОВУЮ папку
+  write_dataset(
+    clean_data,
+    glue("{dir_data}_cleaned/year={year_one}"),  # Новый путь
+    format = "parquet",
+    partitioning = c("month")  # Сохраняем структуру партиций
+  )
+  print(glue("Данные за {year_one} год очищены и помещены в папку {{dir_data}_cleaned}"))
+  }
 
 
 
