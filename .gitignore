@@ -1,7 +1,3 @@
-RFSD/*.*
-MSP_aggregated/*.*
-RFSD_preprocessed/*.*
-MSP/*.*
-MSP_parsed/*.*
 *.parquet
 *.log
+*.zip
