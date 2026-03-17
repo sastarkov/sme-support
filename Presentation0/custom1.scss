@@ -1,0 +1,329 @@
+/*-- scss:defaults --*/
+$hse-blue: #1F2A5A;      // основной тёмно-синий
+$hse-light-blue: #2E86AB; // дополнительный синий (для графиков)
+$hse-orange: #F18F01;     // акцентный оранжевый
+$hse-red: #C73E1D;        // красный
+$hse-teal: #4C9A8A;       // бирюзовый
+$presentation-heading-color: $hse-blue;
+$presentation-title-slide-text-align: left;
+
+/*-- scss:rules --*/
+
+/* ЗАГОЛОВКИ */
+.reveal h2 {
+  font-size: 1.1em !important; /* Увеличиваем (было ~1.3em) */
+  line-height: 1.1;
+}
+
+.reveal h3 {
+  font-size: 1em !important; /* Уменьшаем (стандартно ~1.3em) */
+  font-weight: 550;            /* Делаем чуть менее жирным, если нужно */
+  color: $hse-light-blue;      /* Опционально: выделяем подзаголовки другим синим */
+}
+
+/* ОСНОВНОЙ ТЕКСТ */
+
+.reveal .slides section {
+  color: $hse-blue !important;
+  line-height: 1.2;   /* Оптимально для чтения с экрана */
+  font-size: 0.5em;   /* Чуть меньше стандартного, раз у вас стоит smaller: true */
+
+  /* Если текст все равно кажется разреженным, можно чуть уменьшить отступ между абзацами */
+  p {
+    margin-bottom: 0.3em !important;
+    line-height: 1.1 !important;
+  }
+}
+
+/* Списки делаем чуть светлее или оставляем в основном цвете */
+.reveal ul li, .reveal ol li {
+  margin-bottom: 0.4em; 
+  line-height: 1.1 !important;
+}
+
+/* Если на слайде ЕСТЬ заголовок h2, можно чуть уменьшить отступ, 
+   так как заголовок сам по себе имеет margin */
+.reveal .slides section h2 {
+  margin-top: 0 !important; 
+}
+
+/* ЛОГОТИП */
+/* 1. Находим основной класс логотипа */
+.reveal .slide-logo {
+  left: 50px !important;
+  top: 20px !important;
+  bottom: auto !important;
+  right: auto !important;
+  
+  /* Увеличиваем саму область логотипа */
+  height: 70px !important; 
+  width: auto !important;
+  
+  /* Убираем ограничения по размеру, которые Quarto ставит по умолчанию */
+  max-height: none !important;
+  max-width: none !important;
+}
+
+/* 2. Принудительно меняем размер самого изображения внутри */
+.reveal .slide-logo img {
+  height: 70px !important; 
+  width: auto !important;
+  max-height: none !important;
+}
+
+/* НEADER */
+/* Поднимаем и стилизуем footer */
+.reveal .footer {
+  top: 50px !important;    /* Немного уменьшил, чтобы не накладывался на заголовок */
+  bottom: auto !important;
+  width: 100% !important;
+  color: $hse-blue !important;
+  text-align: center !important;
+  
+  /* Прямое управление размером шрифта */
+  font-size: 26px !important; 
+  
+  /* Quarto часто вкладывает текст в p или span */
+  p, span {
+    font-size: 26px !important;
+    margin: 0 !important;
+  }
+}
+
+.reveal:has(#title-slide.present) .footer {
+  display: none !important;
+}
+
+/* Выравниваем номер слайда в одну линию с футером наверху */
+.reveal .slide-number {
+  top: 50px !important;      /* Должно совпадать с top у .footer */
+  bottom: auto !important;   /* Отключаем прижатие к низу */
+  right: 50px !important;    /* Отступ от правого края */
+  
+  font-size: 26px !important; /* Тот же размер, что у футера */
+  color: $hse-blue !important;
+  background: none !important;
+  opacity: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  height: 40px !important;   /* Высота контейнера для центрирования текста */
+}
+
+/* Скрываем номер на титульном слайде, чтобы не мешал заголовку */
+.reveal:has(#title-slide.present) .slide-number {
+  display: none !important;
+}
+
+.reveal .slides section {
+  padding-top: 80px !important;
+}
+
+.slide-background-content {
+  background-image: url('hse_bg_main.jpg') !important;
+  background-size: contain !important;
+}
+
+/* ТИТУЛЬНИК */
+
+/* Скрываем футер и лого на первом слайде */
+.reveal:has(#title-slide.present) .footer,
+.reveal:has(#title-slide.present) .slide-logo {
+  display: none !important;
+}
+
+/* Добавляем отдельный логотип для титульного листа */
+.reveal .slides section#title-slide {
+  /* 1. Позволяем элементам выходить за пределы стандартной сетки текста */
+  overflow: visible !important; 
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: -120px  !important;         /* Положение сверху */
+    left: -60px;          /* Положение слева */
+    width: 200px;        /* Ширина логотипа на титульнике */
+    height: 100px;       /* Высота логотипа */
+  
+  /* Путь к вашему специальному логотипу для титульного листа */
+    background-image: url('images/01_HSE_Online_Kampus_Logo_Main.png'); 
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: left top !important;
+    z-index: 999;
+}
+}
+
+/* Позиционируем контент титульника */
+.reveal .title-slide .quarto-title-content {
+  position: absolute !important;
+  top: 15% !important; 
+  left: 5% !important;
+  transform: none !important;
+  text-align: left !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+}
+
+/* Настраиваем цвета и отступы внутри */
+#title-slide {
+  h1.title { color: $hse-blue; font-size: 1.6em; margin-bottom: 0.5em; }
+  .subtitle { color: $hse-blue; font-size: 1.1em; margin-bottom: 1.5em; }
+  .quarto-title-authors, .quarto-title-affiliation, .date {
+    color: $hse-blue;
+    font-size: 0.85em;
+    margin-top: 0.2em;
+  }
+}
+
+/* Оформление Оглавления (TOC) */
+
+/* 1. Заголовок оглавления "Структура доклада" */
+.reveal #TOC h2 {
+  color: $hse-blue;
+  font-size: 1.5em;
+  text-align: left;
+  margin-bottom: 1em;
+  border-bottom: 2px solid $hse-blue; /* Синяя линия под заголовком */
+  padding-bottom: 10px;
+}
+
+/* 2. Списки и ссылки в оглавлении */
+.reveal #TOC ul {
+  list-style-type: none; /* Убираем стандартные точки */
+  margin-left: 0;
+  padding-left: 0;
+
+  li {
+    margin-bottom: 0.5em;
+    padding-left: 1.5em;
+    position: relative;
+
+    /* Кастомный маркер в виде синего квадрата или черточки */
+    &::before {
+      content: "■"; 
+      color: $hse-orange; /* Используем ваш акцентный оранжевый для точек */
+      position: absolute;
+      left: 0;
+      font-size: 0.8em;
+      top: 0.2em;
+    }
+
+    a {
+      color: $hse-blue !important;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s ease;
+
+      &:hover {
+        color: $hse-light-blue !important; /* Цвет при наведении */
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+/* Если есть вложенные пункты (sub-levels) */
+.reveal #TOC ul ul {
+  margin-top: 0.2em;
+  margin-left: 1.5em;
+  li::before {
+    content: "•";
+    color: $hse-blue;
+  }
+}
+
+/*--- Оформление обычных слайдов ---*/
+
+/* 1. Заголовок слайда с синей полосой снизу */
+.reveal .slides section:not(.title-slide) h2 {
+  font-size: 1.3em;           /* Чуть меньше для длинных названий */
+  color: $hse-blue;
+  text-align: left;
+  margin-top: 30px;          /* Отступ от верхнего края */
+  margin-bottom: 0.8em;
+  padding-bottom: 10px;
+  border-bottom: 2px solid $hse-blue; /* Фирменная синяя черта */
+  width: 100%;               /* Чтобы черта была на всю ширину */
+}
+
+/* 2. Настройка списков (маркеры в стиле HSE) */
+.reveal .slides section ul {
+  list-style-type: none;
+  margin-left: 1.2em;
+  
+  li {
+    margin-bottom: 0.6em;
+    position: relative;
+    padding-left: 0.5em;
+
+    /* Оранжевый квадратный маркер как в брендбуке */
+    &::before {
+      content: "■";
+      color: $hse-orange;
+      position: absolute;
+      left: -1em;
+      font-size: 0.7em;
+      top: 0.2em;
+    }
+  }
+}
+
+/* Вложенные списки (второй уровень) */
+.reveal .slides section ul ul li::before {
+  content: "—";
+  color: $hse-light-blue;
+}
+
+/* 3. Оформление выделенного текста (Bold) */
+.reveal b, .reveal strong {
+  color: $hse-blue;          /* Жирный текст тоже будет синим */
+  font-weight: 700;
+}
+
+/* 4. Блоки цитат или важной информации */
+.reveal blockquote {
+  border-left: 5px solid $hse-orange;
+  background: rgba($hse-blue, 0.05);
+  padding: 15px 25px;
+  font-style: italic;
+  text-align: left;
+  box-shadow: none;
+}
+
+/* MERMAID */
+
+/* Стили для Mermaid */
+.mermaid svg {
+  max-width: 100% !important; /* Чтобы не вылезала за края */
+  height: auto !important;
+}
+
+/* Перекрашиваем узлы в цвета ВШЭ */
+.mermaid .node rect {
+  stroke: $hse-blue !important;
+  stroke-width: 2px !important;
+}
+
+/* Цвет текста внутри узлов */
+.mermaid .node .label {
+  color: $hse-blue !important;
+  font-family: "HSE Sans", sans-serif !important;
+}
+
+/* СПИСОК ЛИТЕРАТУРЫ */
+
+/*-- scss:rules --*/
+#refs {
+  font-size: 0.6em !important; /* Уменьшаем шрифт, если ссылок много */
+  line-height: 1.4;
+  color: $hse-blue;
+  
+  .csl-entry {
+    margin-bottom: 0.8em; /* Отступ между источниками */
+    text-align: left;
+  }
+}
+
+
+
