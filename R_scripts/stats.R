@@ -5,9 +5,14 @@ library(kableExtra)
 library(skimr)
 
 # Открываем датасет (лениво) и выбираем ключевые переменные
-ds <- open_dataset("Data/RFSD", partitioning = "year")
+ds <- open_dataset("Data/MSP_aggregated", partitioning = "year") %>%
+  filter(year == 2019) %>% collect()
+
+ds %>% skim()
+
+
 # Теперь пробуем взять 10 строк
-ds %>% head(10) %>% collect()
+# ds %>% head(10) %>% collect()
 
 # df_sample %>% 
 #   skim_without_charts() %>% 

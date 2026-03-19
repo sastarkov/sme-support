@@ -5,11 +5,20 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'Python_scripts'))
 
 import MSP_parsing
+import MSP_aggregator
 
 
 start = time.time()
 
-MSP_parsing.parse_MSP('Data/MSP', 'Data/MSP_parsed')
+# парсит единый реестр МСП
+# MSP_parsing.parse_MSP('Data/MSP', 'Data/MSP_parsed')
+
+# агрегирует месячные данные до года
+
+df = MSP_aggregator.process_year([2018, 2019])
+
+# test_year = 2025
+# lf.test = lf.filter(pl.col("year") == test_year)   
 
 end = time.time()
-print(f"Время выполнения:{((end-start)/60):.1f} минут.")
+print(f"Время выполнения:{(end-start):.1f} секунд.")
