@@ -112,24 +112,18 @@ def process_year(list_year):
                 existing_data_behavior = 'overwrite_or_ignore',
                 )
 
-    # end = time.time()
-    # print(f"Время выполнения:{(end-start):.0f} секунд.")
+def test_agg(year):
 
-    # random_inn = df.sample(n=1)['inn'].item()
+    df = pl.scan_parquet("Data/MSP_aggregated/").filter(pl.col("year") == year).collect()
+    random_inn = df.sample(n=3).get_column("inn").to_list()
 
-    # df_test = pl.scan_parquet("MSP_parsed/",
-    # schema={
-    #     "inn": pl.String,
-    #     "year": pl.Int32,
-    #     "month": pl.Int32,
-    #     "inclusion_date": pl.Date,
-    #     "region": pl.String,
-    #     "category": pl.String,
-    #     "sign_new": pl.String,
-    #     "sign_social": pl.String,
-    #     "headcount": pl.Float64,
-    #     "main_OKVED": pl.String,
-    #     "other_OKVED": pl.List(pl.String),
-    #     "license": pl.String
-    #     }
-    # ).filter(pl.col("year") == test_year, pl.col("inn") == '0261044588').collect()
+    df_annual = df.filter(pl.col("inn").is_in(random_inn))
+
+    df_month = (pl.scan_parquet("Data/MSP_parsed/")
+    .filter(pl.col("year") == year)
+    .filter(pl.col("inn").is_in(random_inn))
+    .collect().sort('inn'))
+
+    print(df_annual)
+    print(df_month)
+    return df_annual, df_month
