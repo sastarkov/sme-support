@@ -15,11 +15,11 @@ start = time.time()
 
 """ агрегирует месячные данные до года """
 
-df = MSP_aggregator.process_year(list(range(2017, 2027)))
+# df = MSP_aggregator.process_year(list(range(2017, 2027)))
 
 """ тесты правильности агрегации """
 
-# df_list = MSP_aggregator.test_agg(2019)
+df_list = MSP_aggregator.test_agg(2017)
 
 end = time.time()
 print(f"Время выполнения:{(end-start):.1f} секунд.")

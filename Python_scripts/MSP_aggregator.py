@@ -70,17 +70,19 @@ def aggregate_year_msp(lf):
 
         # преобладающее значение фактора признак нового предприятия в течение года:
         # 1 – новое предприятие, 2 – нет
-        pl.col("sign_new").mode().first().alias("sign_new"),
+        pl.col("sign_new").filter(pl.col("sign_new") == "1").count().alias("months_new"),
+        # pl.col("sign_new").mode().first().alias("sign_new"),
 
         # преобладающее значение фактора признак социального предприятия в течение года:
         # 1 – социальное предприятие, 2 – нет
-        pl.col("sign_social").mode().first().alias("sign_social"),
+        pl.col("sign_social").filter(pl.col("sign_social") == "1").count().alias("months_social"),
+        # pl.col("sign_social").mode().first().alias("sign_social"),
 
         # Средняя численность за первое полугодие (мес. 1-6)
-        pl.col("headcount").filter(pl.col("month").is_between(1, 6)).mean().cast(pl.Float64).alias("headcount_1h"),
+        pl.col("headcount").filter(pl.col("month").is_between(1, 6)).mode().first().alias("headcount_1h"),
 
         # Средняя численность за второе полугодие (мес. 7-12)
-        pl.col("headcount").filter(pl.col("month").is_between(7, 12)).mean().cast(pl.Float64).alias("headcount_2h"),
+        pl.col("headcount").filter(pl.col("month").is_between(7, 12)).mode().first().alias("headcount_2h"),
 
         # # ОКВЭД – первая мода,чтобы исключить ошибочные записи
         # pl.col("main_OKVED").mode().first().alias("main_okved"),
@@ -111,6 +113,7 @@ def process_year(list_year):
                 partitioning_flavor = 'hive',
                 existing_data_behavior = 'overwrite_or_ignore',
                 )
+    return df_result
 
 def test_agg(year):
 
