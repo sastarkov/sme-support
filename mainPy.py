@@ -10,15 +10,16 @@ import MSP_aggregator
 
 start = time.time()
 
-# парсит единый реестр МСП
+""" парсит единый реестр МСП """
 # MSP_parsing.parse_MSP('Data/MSP', 'Data/MSP_parsed')
 
-# агрегирует месячные данные до года
+""" агрегирует месячные данные до года """
 
-df = MSP_aggregator.process_year([2018, 2019])
+df = MSP_aggregator.process_year(list(range(2017, 2027)))
 
-# test_year = 2025
-# lf.test = lf.filter(pl.col("year") == test_year)   
+""" тесты правильности агрегации """
+
+# df_list = MSP_aggregator.test_agg(2019)
 
 end = time.time()
 print(f"Время выполнения:{(end-start):.1f} секунд.")
