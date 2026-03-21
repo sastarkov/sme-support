@@ -19,7 +19,7 @@ start = time.time()
 
 """ тесты правильности агрегации """
 
-df_list = MSP_aggregator.test_agg(2017)
+df_list = MSP_aggregator.test_agg(2021)
 
 end = time.time()
 print(f"Время выполнения:{(end-start):.1f} секунд.")
