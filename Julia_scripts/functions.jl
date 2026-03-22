@@ -6,24 +6,50 @@ println("🧵 Потоков доступно: $(Threads.nthreads())")
 # ─────────────────────────────────────────────────────────────
 # Функция парсинга реестра ССЧР
 # ─────────────────────────────────────────────────────────────
-function parse_sschr(content::String)
-    doc = readxml(IOBuffer(content))
-    records = Vector{NamedTuple{(:inn, :year, :month, :headcount), Tuple{String, Int, Int, Float64}}}(undef, 0)
+
+# Прямой перебор дочерних элементов намного быстрее XPath findall()
+    function parse_sschr(content::String)
+    doc = parsexml(content)
     
-    for doc_elem in findall("./Документ", doc.root)
-        sved = findfirst("./СведНП", doc_elem)
-        sschr = findfirst("./СведССЧР", doc_elem)
-        
-        inn_one = isnothing(sved) ? "" : attribute(sved, "ИННЮЛ")
-        workers = isnothing(sschr) ? "" : parse(Float64, attribute(sschr, "КолРаб"))
+    # Определяем типы колонок с поддержкой missing
+    # Тип Int для года и месяца оставляем строгим, так как без даты запись обычно бесполезна
+    records = NamedTuple{(:inn, :year, :month, :headcount), 
+                         Tuple{Union{String, Missing}, Int, Int, Union{Float64, Missing}}}[]
+    
+    # Резервируем память (примерно 900 строк на файл)
+    sizehint!(records, 950)
 
-        date_sost = attribute(doc_elem, "ДатаСост")
-        day_one, month_one, year_one = parse.(Int, split(date_sost, "."))
+    for doc_elem in eachelement(doc.root)
+        nodename(doc_elem) != "Документ" && continue
 
-        # year_one = parse(Int, split(date_sost, ".")[3])
-        # month_one = parse(Int, split(date_sost, ".")[2])
+        # Значения по умолчанию (используем Union{T, Missing})
+        inn_one::Union{String, Missing} = missing
+        workers::Union{Float64, Missing} = missing
+        day, month, year = 1, 1, 2000 # Технический дефолт для даты
 
-        push!(records, (inn=inn_one, year=year_one, month=month_one, headcount=workers))
+        # Быстрый проход по вложенным узлам
+        for sub_elem in eachelement(doc_elem)
+            name = nodename(sub_elem)
+            if name == "СведНП"
+                inn_one = haskey(sub_elem, "ИННЮЛ") ? sub_elem["ИННЮЛ"] : missing
+            elseif name == "СведССЧР"
+                if haskey(sub_elem, "КолРаб")
+                    # parse(Float64, ...) может выдать ошибку, если в XML пустая строка ""
+                    val = sub_elem["КолРаб"]
+                    workers = isempty(val) ? missing : parse(Float64, val)
+                end
+            end
+        end
+
+        # Парсинг даты из атрибута Документа
+        ds = haskey(doc_elem, "ДатаСост") ? doc_elem["ДатаСост"] : ""
+        if length(ds) >= 10
+            day   = parse(Int, ds[1:2])
+            month = parse(Int, ds[4:5])
+            year  = parse(Int, ds[7:10])
+        end
+
+        push!(records, (inn=inn_one, year=year, month=month, headcount=workers))
     end
     
     return records
@@ -32,56 +58,11 @@ end
 # ─────────────────────────────────────────────────────────────
 # Обработка одного ZIP-файла
 # ─────────────────────────────────────────────────────────────
-function process_zip_file(zip_path::String, parser_func::Function)
-    r = ZipFile.Reader(zip_path)
-    xml_files = [f for f in r.files if endswith(f.name, ".xml") && !endswith(f.name, "/")]
-    
-    results = Vector{Vector{NamedTuple}}(undef, length(xml_files))
-    
-    Threads.@threads for i in eachindex(xml_files)
-        file = xml_files[i]
-        content = read(file, String)
-        results[i] = parser_func(content)
-    end
-    
-    close(r)
-    return vcat(results...)
-end
+
 
 # ─────────────────────────────────────────────────────────────
-# 6. Главная функция
+# главная функция
 # ─────────────────────────────────────────────────────────────
-function main(input_dir::String, output_dir::String)
-    println("🚀 Старт ETL-пайплайна...")
-    println("🧵 Потоков: $(Threads.nthreads())")
-    println("📂 Входная папка: $input_dir")
-    println("📂 Выходная папка: $output_dir")
-    println("─" ^ 60)
-    
-    t_start = time()
-    
-    # Шаг 1: Обработка всех ZIP
-    records = process_zip_file(input_dir)
-    
-    # Шаг 2: Создание DataFrame
-    df = DataFrame(records)
-    
-    println("─" ^ 60)
-    println("📈 Статистика:")
-    println("   Уникальных лет: $(length(unique(df.Год)))")
-    println("   Уникальных месяцев: $(length(unique(df.Месяц)))")
-    println("   Всего записей: $(nrow(df))")
-    println("─" ^ 60)
-    
-    # Шаг 3: Сохранение с партиционированием
-    save_partitioned_parquet(df, output_dir)
-    
-    t_elapsed = time() - t_start
-    
-    println("─" ^ 60)
-    println("⏱ Время выполнения: $(round(t_elapsed, digits=2)) сек")
-    println("🎉 Готово!")
-end
 
-
-
+xml_content = read("D:/sme-support/Data/for_parsing/VO_OTKRDAN_3_9965_9965_20251225_00d6d097-19b1-4670-8221-419acab2b4e2.xml", String)
+df = DataFrame(parse_sschr(xml_content))
