@@ -1,4 +1,5 @@
 *.parquet
 *.log
 *.zip
+*.xml
 Presentation0
