@@ -25,7 +25,7 @@ println("🧵 Потоков доступно: $(Threads.nthreads())")
         # Значения по умолчанию (используем Union{T, Missing})
         inn_one::Union{String, Missing} = missing
         workers::Union{Float64, Missing} = missing
-        day, month, year = 1, 1, 2000 # Технический дефолт для даты
+        day, month, year = 5, 5, 5555  # Технический дефолт для даты
 
         # Быстрый проход по вложенным узлам
         for sub_elem in eachelement(doc_elem)
@@ -34,9 +34,9 @@ println("🧵 Потоков доступно: $(Threads.nthreads())")
                 inn_one = haskey(sub_elem, "ИННЮЛ") ? sub_elem["ИННЮЛ"] : missing
             elseif name == "СведССЧР"
                 if haskey(sub_elem, "КолРаб")
-                    # parse(Float64, ...) может выдать ошибку, если в XML пустая строка ""
                     val = sub_elem["КолРаб"]
-                    workers = isempty(val) ? missing : parse(Float64, val)
+                    parsed_val = tryparse(Float64, val)
+                    workers = isnothing(parsed_val) ? missing : parsed_val
                 end
             end
         end
