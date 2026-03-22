@@ -129,4 +129,8 @@ def test_agg(year):
 
     print(df_annual)
     print(df_month)
+
     return df_annual, df_month
+
+def impute_headcount(data_dir):
+    
