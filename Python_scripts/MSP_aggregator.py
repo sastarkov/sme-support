@@ -133,6 +133,7 @@ def test_agg(year):
 
     return df_annual, df_month
 
+"""Функция импутирования ссчр в текущие данные из отчетов будущих периодов"""
 def impute_headcount():
 
     years = range(2017, 2025)
@@ -170,7 +171,7 @@ def impute_headcount():
 
 
 # Функция приведения данных за 2025 и 2026 годы к универсальному виду и импутация ССЧР из отдельного реестра ФНС 
-def impute_headcount_2024_2026(input_dir, output_dir):
+def impute_headcount_2024(input_dir, output_dir):
 
     # работа с 2024 годом
     lf_headcount_2024 = (
@@ -196,7 +197,28 @@ def impute_headcount_2024_2026(input_dir, output_dir):
     return lf_2024_new.collect()
 
 
-df1 = impute_headcount_2024_2026("Data/MSP_aggregated", "Data/MSP_ready")
+def clean_data_2025_2026(input_dir, output_dir):
+
+    for year in range(2025, 2027):
+
+        lf = pl.scan_parquet(f"{input_dir}/year={year}/part-0.parquet")
+
+        lf_mutated = (
+            lf
+            .drop(["headcount_1h", "headcount_2h"])
+            .with_columns(pl.lit(None).cast(pl.Float64).alias("headcount"))
+        )
+
+        os.makedirs(f"{output_dir}/year={year}", exist_ok=True) # т.к. sink_parquet не умеет создавать папки!
+        lf_mutated.sink_parquet(f"{output_dir}/year={year}/part-0.parquet")
+
+
+    return lf_mutated.collect()
+
+df = clean_data_2025_2026("Data/MSP_aggregated", "Data/MSP_ready")
+
+
+# df1 = impute_headcount_2024("Data/MSP_aggregated", "Data/MSP_ready")
 
 
 
