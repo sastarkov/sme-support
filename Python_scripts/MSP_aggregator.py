@@ -135,42 +135,68 @@ def test_agg(year):
 
 def impute_headcount():
 
-    years = range(2017, 2024)
+    years = range(2017, 2025)
     input_dir = "Data/MSP_aggregated"
     output_dir = "Data/MSP_ready"
 
-    # for year in years:
-
-    year = 2017
-    
-    lf_year_ahead = (
-        pl.scan_parquet(f"{input_dir}/year={year+1}")
-        .select(["inn", "headcount_2h"])
-        .rename({"headcount_2h": f"headcount_from_{year+1}"})
-        )
-    
+    for year in years:
         
-    lf_two_years_ahead = (
-        pl.scan_parquet(f"{input_dir}/year={year+2}")
-        .select(["inn", "headcount_1h"])
-        .rename({"headcount_1h": f"headcount_from_{year+2}"})
-        )
+        lf_year_ahead = (
+            pl.scan_parquet(f"{input_dir}/year={year+1}")
+            .select(["inn", "headcount_2h"])
+            .rename({"headcount_2h": f"headcount_from_{year+1}"})
+            )
+            
+        lf_two_years_ahead = (
+            pl.scan_parquet(f"{input_dir}/year={year+2}")
+            .select(["inn", "headcount_1h"])
+            .rename({"headcount_1h": f"headcount_from_{year+2}"})
+            )
 
-    lf_in = pl.scan_parquet(f"{input_dir}/year={year}")
+        lf_in = pl.scan_parquet(f"{input_dir}/year={year}")
 
-    lf_out = (
-        lf_in
-        .join(lf_year_ahead, on="inn", how="left")
-        .join(lf_two_years_ahead, on="inn", how="left")
-        .with_columns(pl.mean_horizontal(f"headcount_from_{year+1}", f"headcount_from_{year+2}").alias("headcount"))
-        .drop(["headcount_1h", "headcount_2h", f"headcount_from_{year+1}", f"headcount_from_{year+2}"])
-        )
+        lf_out = (
+            lf_in
+            .join(lf_year_ahead, on="inn", how="left")
+            .join(lf_two_years_ahead, on="inn", how="left")
+            .with_columns(pl.mean_horizontal(f"headcount_from_{year+1}", f"headcount_from_{year+2}").alias("headcount"))
+            .drop(["headcount_1h", "headcount_2h", f"headcount_from_{year+1}", f"headcount_from_{year+2}"])
+            )
 
-    os.makedirs(f"{output_dir}/year={year}", exist_ok=True) # т.к. sink_parquet не умеет создавать папки
-    lf_out.sink_parquet(f"{output_dir}/year={year}/part-0.parquet")
+        os.makedirs(f"{output_dir}/year={year}", exist_ok=True) # т.к. sink_parquet не умеет создавать папки!
+        lf_out.sink_parquet(f"{output_dir}/year={year}/part-0.parquet")
 
     return "Все ок"
 
+
+# Функция приведения данных за 2025 и 2026 годы к универсальному виду и импутация ССЧР из отдельного реестра ФНС 
+def impute_headcount_2024_2026(input_dir, output_dir):
+
+    # работа с 2024 годом
+    lf_headcount_2024 = (
+        pl.scan_parquet("Data\out_of_parsing\sschr.parquet")
+        .select(["inn", "headcount"])
+        .rename({"headcount": "headcount_from_sschr"})
+        )
+
+    lf_2024 = pl.scan_parquet("Data\MSP_ready\year=2024").rename({"headcount":"headcount_from_msp"})
+
+    lf_2024_new = (
+        lf_2024
+        .join(lf_headcount_2024, on = "inn", how = "left")
+        .with_columns(pl.mean_horizontal("headcount_from_sschr", "headcount_from_msp").alias("headcount"))
+        .drop(["headcount_from_sschr", "headcount_from_msp"])
+    )
+
+    os.makedirs(f"{output_dir}/year=2024", exist_ok=True) # т.к. sink_parquet не умеет создавать папки!
+    lf_2024_new.sink_parquet(f"{output_dir}/year=2024/part-1.parquet")
+
+    # работа с 2025, 2026 годом
+
+    return lf_2024_new.collect()
+
+
+df1 = impute_headcount_2024_2026("Data/MSP_aggregated", "Data/MSP_ready")
 
 
 
