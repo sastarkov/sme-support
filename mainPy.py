@@ -23,9 +23,8 @@ start = time.time()
 
 """ импутация численности работников в целевые годы из последующих отчетов """
 
-
-
-
+df = MSP_aggregator.impute_headcount()
+print(df)
 
 end = time.time()
-print(f"Время выполнения:{(end-start):.1f} секунд.")
+print(f"Время выполнения:{(end-start):.2f} секунд.")
