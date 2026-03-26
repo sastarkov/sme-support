@@ -3,3 +3,9 @@
 *.zip
 *.xml
 Presentation0
+analysis_files
+*.html
+*.bib
+*.qmd
+analysis_cache
+*.docx
