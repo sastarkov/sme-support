@@ -4,10 +4,45 @@ using ZipFile, EzXML, DataFrames, Parquet2
 println("🧵 Потоков доступно: $(Threads.nthreads())")
 
 # ─────────────────────────────────────────────────────────────
+# Тип записи для парсера мер поддержки (support measures)
+# ─────────────────────────────────────────────────────────────
+const Record_sm = @NamedTuple{
+    inn::String, # ИНН фирмы СвЮл\ИННЮЛ
+    year_state::Int, # год из даты состояния записи
+    month_state::Int,  # месяц из даты состояния записи 
+    date_state::Date,  # дата состояния записи Документ\ДатаСост ?
+    date_first::Union{Date, Missing}, #Дата первичной публикации поддержки в реестре СвПредПод\ДатаСвед
+    date_last::Union{Date, Missing}, #Дата последнего обновления в реестре сведений о поддержке СвПредПод\ДатаОбнов
+    inn_prov::Union{String, Missing}, #ИНН органа, предоставившего поддержку СвПредПод\ИННЮЛ
+    cat::Union{String, Missing}, #= Категория субъекта малого и среднего предпринимательства 
+    на дату принятия решения о предоставлении поддержки; Категория субъекта малого и среднего предпринимательства 
+    на дату принятия решения о предоставлении поддержки	КатСуб	A	T(=1)	ОК	Принимает значение:
+    1 – микропредприятие   | 2 – малое предприятие   | 3 – среднее предприятие   | 4 – отсутствует СвПредПод\КатСуб =#
+    date_supp::Union{Date, Missing}, # Срок оказания поддержки СвПредПод\СрокПод
+    date_desion_support::Union{Date, Missing}, # Дата принятия решения о предоставлении поддержки СвПредПод\ДатаПрин
+    date_desion_terminate::Union{Date, Missing}, # Дата принятия решения о прекращении оказания поддержки; Дата в формате ДД.ММ.ГГГГ СвПредПод\ДатаПрекр; случай проблем!
+
+
+
+
+    date_decision::Union{Date, Missing},
+    date_start::Union{Date, Missing},
+    category::String,
+    form_code::String,
+    form_name::String,
+    kind_code::String,
+    kind_name::String,
+    amount::String,
+    unit::String,
+    info_violation::String,
+}
+
+# ─────────────────────────────────────────────────────────────
 # Функция парсинга реестра ССЧР
 # ─────────────────────────────────────────────────────────────
 
 function parse_sschr(content::String)
+
     doc = parsexml(content)
     
     # Определяем типы колонок с поддержкой missing
@@ -50,6 +85,19 @@ function parse_sschr(content::String)
     push!(records, (inn=inn_one, year=year, month=month, headcount=workers))
     end
     return records
+end
+
+# ─────────────────────────────────────────────────────────────
+# Функция парсинга реестра МСП - получателей поддержки
+# ─────────────────────────────────────────────────────────────
+
+function parse_xml_msppp(content::String)
+
+
+
+
+
+
 end
 
 
@@ -107,4 +155,4 @@ end
 # xml_content = read("D:/sme-support/Data/for_parsing/VO_OTKRDAN_3_9965_9965_20251225_00d6d097-19b1-4670-8221-419acab2b4e2.xml", String)
 # df = DataFrame(parse_sschr(xml_content))
 
-process_zip(raw"D:\sme-support\Data\for_parsing\data-20251225-structure-20200408.zip", raw"D:\sme-support\Data\out_of_parsing\sschr.parquet", parse_sschr)
+# process_zip(raw"D:\sme-support\Data\for_parsing\data-20251225-structure-20200408.zip", raw"D:\sme-support\Data\out_of_parsing\sschr.parquet", parse_sschr)
