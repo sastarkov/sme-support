@@ -1,54 +1,32 @@
 library(arrow)
 library(dplyr)
-library(knitr)
-library(kableExtra)
-library(skimr)
-
-# Открываем датасет (лениво) и выбираем ключевые переменные
-ds <- open_dataset("Data/MSP_aggregated", partitioning = "year") %>%
-  filter(year == 2019) %>% collect()
-
-ds %>% skim()
+# library(ExPanDaR)
+# library(vtable)
+# library(summarytools)
 
 
-# Теперь пробуем взять 10 строк
-# ds %>% head(10) %>% collect()
+# Загружаем датасет 
+# df_test <- open_dataset("Data/MSP_ready", partitioning = "year") %>% 
+# sample_n(1000) %>% 
+# collect()
 
-# df_sample %>% 
-#   skim_without_charts() %>% 
-#   yank("numeric") # выводит только числовые переменные
 
-# # Определяем переменные, для которых хотим статистику
-# vars <- c("age", "line_1600", "line_2400", "roa", "current_ratio") # пример
+# ExPanD(df_test, ts_id = "year", cs_id = "inn")
 
-# # Вычисляем статистики на уровне всего датасета (лениво)
-# stats <- ds %>%
-#   select(all_of(vars)) %>%
-#   summarise(across(
-#     everything(),
-#     list(
-#       mean   = ~mean(.x, na.rm = TRUE),
-#       sd     = ~sd(.x, na.rm = TRUE),
-#       min    = ~min(.x, na.rm = TRUE),
-#       max    = ~max(.x, na.rm = TRUE),
-#       n      = ~sum(!is.na(.x)),
-#       n_miss = ~sum(is.na(.x))
-#     ),
-#     .names = "{.col}_{.fn}"
-#   )) %>%
-#   collect()  # выполняем запрос и собираем результат в память
+# sumtable(df_test, group = 'prefer_category', group.long = TRUE)
 
-# # Транспонируем в удобный для чтения вид
-# stats_long <- stats %>%
-#   pivot_longer(everything(),
-#                names_to = c("variable", "stat"),
-#                names_sep = "_") %>%
-#   pivot_wider(names_from = stat, values_from = value)
+diff_ds <- function(ds1_path, ds2_path) {
 
-# # Округляем числовые значения для красоты
-# stats_long <- stats_long %>%
-#   mutate(across(where(is.numeric), ~round(.x, 2)))
+  ds1 <- open_dataset(ds1_path) %>% collect()
+  ds2 <- open_dataset(ds2_path) %>% collect()
 
-# # Выводим таблицу
-# kable(stats_long, caption = "Описательные статистики ключевых переменных") %>%
-#   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+  only_in_ds1 <- anti_join(ds2, ds1, by = "inn")
+  
+  return(only_in_ds1)
+} 
+
+df <- diff_ds("Data\\out_of_parsing\\sschr.parquet", "Data\\MSP_ready\\year=2024\\part-0.parquet")
+
+
+
+
