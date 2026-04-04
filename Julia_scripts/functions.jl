@@ -1,5 +1,5 @@
 # 1. Импорт пакетов
-using ZipFile, EzXML, DataFrames, Parquet2
+using ZipFile, EzXML, DataFrames, Dates #Parquet2
 
 println("🧵 Потоков доступно: $(Threads.nthreads())")
 
@@ -7,10 +7,10 @@ println("🧵 Потоков доступно: $(Threads.nthreads())")
 # Тип записи для парсера мер поддержки (support measures)
 # ─────────────────────────────────────────────────────────────
 const Record = @NamedTuple{
-    inn::String, # ИНН фирмы СвЮл\ИННЮЛ
-    year_state::Int, # год из даты состояния записи
-    month_state::Int,  # месяц из даты состояния записи 
-    date_state::Date,  # дата состояния записи Документ\ДатаСост ?
+    inn::Union{String, Missing}, # ИНН фирмы СвЮл\ИННЮЛ
+    year_state::Union{Int, Missing}, # год из даты состояния записи
+    month_state::Union{Int, Missing},  # месяц из даты состояния записи 
+    date_state::Union{Date, Missing},  # дата состояния записи Документ\ДатаСост ?
     date_first::Union{Date, Missing}, #Дата первичной публикации поддержки в реестре СвПредПод\ДатаСвед
     date_last::Union{Date, Missing}, #Дата последнего обновления в реестре сведений о поддержке СвПредПод\ДатаОбнов
     inn_prov::Union{String, Missing}, #ИНН органа, предоставившего поддержку СвПредПод\ИННЮЛ
@@ -18,9 +18,9 @@ const Record = @NamedTuple{
     на дату принятия решения о предоставлении поддержки 1 – микропредприятие | 2 – малое предприятие 
     | 3 – среднее предприятие | 4 – отсутствует СвПредПод\КатСуб =#
     date_supp::Union{Date, Missing}, # Срок оказания поддержки СвПредПод\СрокПод
-    date_desion_support::Union{Date, Missing}, # Дата принятия решения о предоставлении поддержки СвПредПод\ДатаПрин
-    date_desion_terminate::Union{Date, Missing}, # Дата принятия решения о прекращении оказания поддержки; Дата в формате ДД.ММ.ГГГГ СвПредПод\ДатаПрекр; случай проблем!
-    indicator_offense::Union{Bool, Missing}, # Факт наличия нарушения 1 - да | 2 - нет СвПредПод\ИнфНаруш
+    date_decision_support::Union{Date, Missing}, # Дата принятия решения о предоставлении поддержки СвПредПод\ДатаПрин
+    date_decision_terminate::Union{Date, Missing}, # Дата принятия решения о прекращении оказания поддержки; Дата в формате ДД.ММ.ГГГГ СвПредПод\ДатаПрекр; случай проблем!
+    indicator_offense::Union{String, Missing}, # Факт наличия нарушения 1 - да | 2 - нет СвПредПод\ИнфНаруш
     support_form::Union{String, Missing}, # Код формы предоставленной поддержки, СвПредПод\ФормПод\КодФорм
     support_name_form::Union{String, Missing}, # Наименование формы предоставленной поддержки, СвПредПод\ФормПод\НаимФорм
     support_type::Union{String, Missing}, # Код вида предоставленной поддержки, СвПредПод\ВидПод\КодВид
@@ -37,11 +37,11 @@ const Record = @NamedTuple{
 # ─────────────────────────────────────────────────────────────
 # Безопасное получение атрибута
 # ─────────────────────────────────────────────────────────────
-function safe_attr(node, attr_name::String, default=Missing)
-    if isnothing(node)
-        return default
-    end
-    return hasattribute(node, attr_name) ? attribute(node, attr_name) : default
+function safe_attr(node, attr_name::String, default=missing)
+
+    isnothing(node) && return default
+    return haskey(node, attr_name) ? node[attr_name] : default
+
 end
 
 # ─────────────────────────────────────────────────────────────
@@ -56,8 +56,9 @@ function safe_parse_date(date_str::Union{String, Missing, Nothing})
 end
 
 # ─────────────────────────────────────────────────────────────
-# Функция парсинга реестра ССЧР
+# Функция парсинга реестра МСП - получателей поддержки
 # ─────────────────────────────────────────────────────────────
+
 function parse_xml_msppp(xml_bytes)
     
     doc = readxml(IOBuffer(String(xml_bytes)))
@@ -66,7 +67,7 @@ function parse_xml_msppp(xml_bytes)
     records = Record[]
     sizehint!(records, 1000)  # Предварительное выделение памяти для словаря
     
-    for doc_node in children(root)
+    for doc_node in eachelement(root)
 
         nodename(doc_node) == "Документ" || continue
         
@@ -90,9 +91,9 @@ function parse_xml_msppp(xml_bytes)
             # Срок оказания поддержки
             date_supp = safe_parse_date(safe_attr(supp, "СрокПод"))
             # Дата принятия решения о предоставлении поддержки
-            date_desion_support = safe_parse_date(safe_attr(supp, "ДатаПрин"))
+            date_decision_support = safe_parse_date(safe_attr(supp, "ДатаПрин"))
             # Дата принятия решения о прекращении оказания поддержки
-            date_desion_terminate = safe_parse_date(safe_attr(supp, "ДатаПрекр"))
+            date_decision_terminate = safe_parse_date(safe_attr(supp, "ДатаПрекр"))
             # Факт наличия нарушения
             indicator_offense = safe_attr(supp, "ИнфНаруш")
 
@@ -131,32 +132,39 @@ function parse_xml_msppp(xml_bytes)
 
             # Добавляем запись
 
-            push!(records, Record(
+            new_record = (
                 inn = inn,
-                # Проверяем дату на missing перед вызовом функций года/месяца
                 year_state  = ismissing(date_state) ? missing : year(date_state),
                 month_state = ismissing(date_state) ? missing : month(date_state),
                 date_state  = date_state,
                 date_first = date_first,
-                date_last = date_last,  # !!!!!!!!!!!!!!!!!
-                date_decision = date_decision_parsed,
-                date_start    = date_start_parsed,
-                category      = category,
-                form_code     = form_code,
-                form_name     = form_name,
-                kind_code     = kind_code,
-                kind_name     = kind_name,
-                amount        = amount,
-                unit          = unit,
-                info_violation = info_violation,
-            ))
+                date_last = date_last,
+                inn_prov = inn_prov, 
+                cat = cat,
+                date_supp = date_supp,
+                date_decision_support = date_decision_support,
+                date_decision_terminate = date_decision_terminate,
+                indicator_offense = indicator_offense,
+                support_form = support_form,
+                support_name_form = missing,
+                support_type = missing,
+                support_name_type = missing,
+                support_amount = missing,
+                support_unit = missing,
+                offense_type = missing
+            )
+
+            push!(records, new_record)
+
         end
     end
     
     return records
 end
 
-
+# ─────────────────────────────────────────────────────────────
+# Функция парсинга реестра ССЧР
+# ─────────────────────────────────────────────────────────────
 
 function parse_sschr(content::String)
 
@@ -203,20 +211,6 @@ function parse_sschr(content::String)
     end
     return records
 end
-
-# ─────────────────────────────────────────────────────────────
-# Функция парсинга реестра МСП - получателей поддержки
-# ─────────────────────────────────────────────────────────────
-
-# function parse_xml_msppp(content::String)
-
-
-
-
-
-
-# end
-
 
 # ─────────────────────────────────────────────────────────────
 # Обработка одного ZIP-файла
@@ -269,7 +263,7 @@ end
 # главная функция
 # ─────────────────────────────────────────────────────────────
 
-# xml_content = read("D:/sme-support/Data/for_parsing/VO_OTKRDAN_3_9965_9965_20251225_00d6d097-19b1-4670-8221-419acab2b4e2.xml", String)
-# df = DataFrame(parse_sschr(xml_content))
+xml_content = read("D:\\sme-support\\Data\\for_parsing\\VO_SVMSP_0000_9965_20260215_00bdc137-8bae-49fc-b2a2-d587a6a2ca9a.xml", String)
+df = DataFrame(parse_xml_msppp(xml_content))
 
 # process_zip(raw"D:\sme-support\Data\for_parsing\data-20251225-structure-20200408.zip", raw"D:\sme-support\Data\out_of_parsing\sschr.parquet", parse_sschr)
