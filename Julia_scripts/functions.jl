@@ -25,10 +25,10 @@ const Record = @NamedTuple{
     support_name_form::Union{String, Missing}, # Наименование формы предоставленной поддержки, СвПредПод\ФормПод\НаимФорм
     support_type::Union{String, Missing}, # Код вида предоставленной поддержки, СвПредПод\ВидПод\КодВид
     support_name_type::Union{String, Missing}, # Наименование вида предоставленной поддержки СвПредПод\ВидПод\НаимВид
-    support_amount::Union{Int, Missing}, # Размер поддержки СвПредПод\РазмПод\РазмПод
+    support_amount::Union{Float64, Missing}, # Размер поддержки СвПредПод\РазмПод\РазмПод
     support_unit::Union{String, Missing}, #= Единица измерения поддержки. Принимает значение:
     1 – рубль | 2 – квадратный метр | 3 – час | 4 – процент | 5 – единица СвПредПод\РазмПод\ЕдПод =#
-    offense_type::Union{Bool, Missing}, #= Вид нарушения. Принимает значение: 1 – Нарушение порядка и условий оказания поддержки, 
+    offense_type::Union{String, Missing}, #= Вид нарушения. Принимает значение: 1 – Нарушение порядка и условий оказания поддержки, 
     связанное с нецелевым использованием средств поддержки или представлением недостоверных сведений и документов | 2 – Нарушение порядка и условий 
     оказания поддержки, не связанное с нецелевым использованием средств поддержки или представлением недостоверных сведений и документов 
     СвПредПод\Нарушения\ВидНаруш =#
@@ -53,6 +53,15 @@ function safe_parse_date(date_str::Union{String, Missing, Nothing})
     dt = tryparse(Date, date_str, dateformat"dd.MM.yyyy")
 
     return isnothing(dt) ? missing : dt
+end
+
+# ─────────────────────────────────────────────────────────────
+# Безопасный парсинг строки в целое число
+# ─────────────────────────────────────────────────────────────
+
+function safe_parse_float(s)
+    (isnothing(s) || ismissing(s) || isempty(s)) && return missing
+    return tryparse(Float64, s)
 end
 
 # ─────────────────────────────────────────────────────────────
@@ -101,7 +110,24 @@ function parse_xml_msppp(xml_bytes)
             # Код формы предоставленной поддержки
             support_form = safe_attr(form, "КодФорм")
             # Наименование формы предоставленной поддержки
-            # !!!!!!!!!!!
+            support_name_form = safe_attr(form, "НаимФорм")
+            
+            type_ = findfirst("./ВидПод", supp)
+            # Код вида предоставленной поддержки
+            support_type = safe_attr(type_, "КодВид")
+            # Наименование вида предоставленной поддержки
+            support_name_type = safe_attr(type_, "НаимВид")
+
+            amount = findfirst("./РазмПод", supp)
+            # Размер поддержки
+            support_amount_str = safe_attr(amount, "РазмПод")
+            support_amount = safe_parse_float(support_amount_str)
+            #Единица измерения поддержки
+            support_unit = safe_attr(amount, "ЕдПод")
+
+            offence = findfirst("./Нарушения", supp)
+            #Вид нарушения
+            offense_type = safe_attr(offence, "ВидНаруш")
 
             # # Форма поддержки
             # form = findfirst("./ФормПод", supp)
@@ -146,12 +172,12 @@ function parse_xml_msppp(xml_bytes)
                 date_decision_terminate = date_decision_terminate,
                 indicator_offense = indicator_offense,
                 support_form = support_form,
-                support_name_form = missing,
-                support_type = missing,
-                support_name_type = missing,
-                support_amount = missing,
-                support_unit = missing,
-                offense_type = missing
+                support_name_form = support_name_form,
+                support_type = support_type,
+                support_name_type = support_name_type,
+                support_amount = support_amount,
+                support_unit = support_unit,
+                offense_type = offense_type
             )
 
             push!(records, new_record)
