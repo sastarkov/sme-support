@@ -9,3 +9,10 @@ analysis_files
 *.qmd
 analysis_cache
 *.docx
+Quarto
+Word
+Data
+.docx
+.png
+.txt
+.rds

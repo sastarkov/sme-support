@@ -13,20 +13,6 @@ if (!require("glue")) {
   library(glue)
 }
 
-#Функция поиска дупликатов по inn в пределах месячных данных
-# find_dupl <- function(path_to_data) {
-
-# # Открываем датасет
-#   ds <- open_dataset(path_to_data)
-
-#   duplicates <- ds %>%
-#     add_count(month, inn, name = "cnt") %>%  #добавляет колонку cnt = количество строк year&месяц&inn 
-#     filter(cnt > 1) %>%  #выбираем те строки, где их количество больше 1
-#     select(-cnt) %>%  #удаляет колонку cnt
-#     collect()
-  
-#   return(duplicates)
-# }
 
 # Функция для поиска дубликатов записей в спарсенном датасете МСП
 find_dupl <- function(dir_data, year_list) {
@@ -38,9 +24,9 @@ find_dupl <- function(dir_data, year_list) {
     ds <- open_dataset(glue("{dir_data}/year={year_one}"))
 
     dupl <- ds %>%
-    add_count(month, inn, name = "cnt") %>%  #добавляет колонку cnt = количество строк year&месяц&inn 
+    add_count(month, inn, name = "cnt") %>%  #добавляем колонку cnt = количество строк year&месяц&inn 
     filter(cnt > 1) %>%  #выбираем те строки, где их количество больше 1
-    select(-cnt) %>%  #удаляет колонку cnt
+    select(-cnt) %>%  #удаляем колонку cnt
     collect()
         
     n_dupl_inn <- nrow(dupl)
@@ -63,7 +49,6 @@ clean_dupl <- function(dir_data, year_one) {
   clean_data <- ds %>%
     distinct(month, inn, .keep_all = TRUE)
 
-  # Запись в НОВУЮ папку
   write_dataset(
     clean_data,
     glue("{dir_data}_cleaned/year={year_one}"),  # Новый путь

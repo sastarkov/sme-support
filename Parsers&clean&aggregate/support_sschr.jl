@@ -1,8 +1,6 @@
 # 1. Импорт пакетов
 using ZipFile, EzXML, DataFrames, Dates, Parquet2
 
-println("🧵 Потоков доступно: $(Threads.nthreads())")
-
 # ─────────────────────────────────────────────────────────────
 # Тип записи для парсера мер поддержки (support measures)
 # ─────────────────────────────────────────────────────────────
@@ -132,33 +130,6 @@ function parse_xml_msppp(xml_bytes)
             #Вид нарушения
             offense_type = safe_attr(offence, "ВидНаруш")
 
-            # # Форма поддержки
-            # form = findfirst("./ФормПод", supp)
-            # if form !== nothing
-            #     form_code = safe_attr(form, "КодФорм")
-            #     form_name = safe_attr(form, "НаимФорм")
-            # else
-            #     form_code = form_name = ""
-            # end
-
-            # # Вид поддержки
-            # kind = findfirst("./ВидПод", supp)
-            # if kind !== nothing
-            #     kind_code = safe_attr(kind, "КодВид")
-            #     kind_name = safe_attr(kind, "НаимВид")
-            # else
-            #     kind_code = kind_name = ""
-            # end
-
-            # # Размер поддержки
-            # amount_elem = findfirst("./РазмПод", supp)
-            # if amount_elem !== nothing
-            #     amount = safe_attr(amount_elem, "РазмПод")
-            #     unit = safe_attr(amount_elem, "ЕдПод")
-            # else
-            #     amount = unit = ""
-            # end
-
             # Добавляем запись
 
             new_record = (
@@ -200,8 +171,6 @@ function parse_sschr(content::String)
 
     doc = parsexml(content)
     
-    # Определяем типы колонок с поддержкой missing
-    # Тип Int для года и месяца оставляем строгим, так как без даты запись обычно бесполезна
     records = NamedTuple{(:inn, :year, :month, :headcount), 
                         Tuple{Union{String, Missing}, Int, Int, Union{Float64, Missing}}}[]
     
@@ -214,7 +183,6 @@ function parse_sschr(content::String)
         workers::Union{Float64, Missing} = missing
         day, month, year = 5, 5, 5555  # Технический дефолт для даты
 
-        # Быстрый проход по вложенным узлам
         for sub_elem in eachelement(doc_elem)
             name = nodename(sub_elem)
             if name == "СведНП"
@@ -223,8 +191,7 @@ function parse_sschr(content::String)
             elseif name == "СведССЧР"
                 if haskey(sub_elem, "КолРаб")
                 val_kr = strip(sub_elem["КолРаб"])
-                # Превращаем пустые строки и пробелы в missing
-                workers = isempty(val_kr) ? missing : tryparse(Float64, val_kr)
+                workers = isempty(val_kr) ? missing : tryparse(Float64, val_kr) #  пустые строки и пробелы в missing
                 end
             end
         end
@@ -254,7 +221,7 @@ function process_zip(zip_path, output_path, parse_function::Function)
     num_files = length(xml_entries)
     
     println("Шаг 1: Чтение $num_files файлов в оперативную память...")
-    # Читаем содержимое последовательно, чтобы не сломать ZipFile
+
     file_contents = Vector{String}(undef, num_files)
     for i in 1:num_files
         try
@@ -264,12 +231,11 @@ function process_zip(zip_path, output_path, parse_function::Function)
             error("ОШИБКА ЧТЕНИЯ АРХИВА в файле '$(xml_entries[i].name)': $e")
         end
     end
-    close(z) # Архив больше не нужен, он в памяти
+    close(z)
 
     println("Шаг 2: Парсинг на $(Threads.nthreads()) потоках...")
     all_results = Vector{Any}(undef, num_files)
 
-    # Вот теперь включаем параллелизм на полную мощность
     Threads.@threads for i in 1:num_files
         try
             all_results[i] = parse_function(file_contents[i])
@@ -279,10 +245,9 @@ function process_zip(zip_path, output_path, parse_function::Function)
     end
 
     println("Шаг 3: Сборка и сохранение...")
-    # Собираем все кусочки в один большой массив и превращаем в DataFrame
+
     final_df = DataFrame(reduce(vcat, all_results))
     
-    # Удаляем временный массив строк, чтобы освободить память перед записью
     file_contents = nothing 
     GC.gc() 
 
@@ -301,21 +266,12 @@ function process_zip2(zip_path, output_path, parse_function::Function)
     
     println("Обработка $num_files файлов...")
 
-    # Используем канал для сбора результатов из разных потоков
-    # или просто массив, если порядок не важен
     all_results = Vector{Any}(undef, num_files)
 
-    # Ограничиваем количество одновременно открытых данных
-    # Вместо загрузки ВСЕХ строк, идем по файлам
-    # ZipFile.Reader не потокобезопасен, поэтому само чтение из ZIP делаем в одном потоке,
-    # а тяжелый парсинг — в пуле потоков.
-    
     for i in 1:num_files
-        # Читаем ОДИН файл в строку
+        # Читаем  файл в строку
         content = read(xml_entries[i], String)
         
-        # Парсим его (здесь можно добавить Threads.@spawn для параллелизма, 
-        # но для начала попробуйте последовательно, это уже сэкономит память)
         try
             all_results[i] = parse_function(content)
         catch e
@@ -323,7 +279,7 @@ function process_zip2(zip_path, output_path, parse_function::Function)
             all_results[i] = Record[] # Пустой результат, чтобы vcat не сломался
         end
         
-        # Каждые 500 файлов принудительно очищаем память, если прижимает
+        # Каждые 500 файлов принудительно очищаем память
         if i % 500 == 0
             println("Обработано $i / $num_files...")
             GC.gc() 
@@ -348,15 +304,21 @@ end
 # главная функция
 # ─────────────────────────────────────────────────────────────
 
-# xml_content = read("D:\\sme-support\\Data\\for_parsing\\VO_SVMSP_0000_9965_20201218_00f1a77b-7493-4e0c-a3e0-37c69b365ce3.xml", String)
-# df = DataFrame(parse_xml_msppp(xml_content))
+function through_files(dir_in, dir_out)
 
-# process_zip(raw"D:\sme-support\Data\for_parsing\data-20260215-structure-20230615.zip", raw"D:\sme-support\Data\out_of_parsing\msppp2.parquet", parse_xml_msppp)
+    for file_path_in in readdir(dir_in, join=true)
 
-@time begin
-    process_zip2(raw"D:\sme-support\Data\for_parsing\data-20260215-structure-20230615.zip", raw"D:\sme-support\Data\out_of_parsing\msppp2.parquet", parse_xml_msppp)
+            filename_in = basename(file_path_in)
+            parts = split(filename_in, "-")
+            filename_out = parts[2][1:6]
+            file_path_out = joinpath(dir_out, filename_out * ".parquet")
+
+            println("Обработка файла:  ", filename_in)
+
+            process_zip2(file_path_in, file_path_out, parse_xml_msppp)
+
+    end
+
 end
 
-@time begin
-    process_zip2(raw"D:\sme-support\Data\for_parsing\data-20201220-structure-20201220.zip", raw"D:\sme-support\Data\out_of_parsing\msppp1.parquet", parse_xml_msppp)
-end
+through_files(raw"D:\sme-support\Data\for_parsing", raw"D:\sme-support\Data\out_of_parsing")

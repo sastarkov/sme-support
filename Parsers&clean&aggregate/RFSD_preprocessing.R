@@ -14,18 +14,15 @@ if (!require("glue")) {
   library(glue)
 }
 
+library(lubridate)
+
 # Функция для извлечения нужных признаков в заданный год и предобработки данных
 extract_data <- function(required_year) {
   
-  ds <- open_dataset("RFSD") # путь к папке с БД .parquet
+  ds <- open_dataset("D:\\sme-support\\Data\\RFSD") # путь к папке с БД .parquet
   
   # Список базовых дескрипторов фирмы и данных о ней
-  descr <- c(
-    "year", "inn", "region", "creation_date", "dissolution_date",
-    "age", "okved_section", "okved", "okopf", "okfc", "oktmo", 
-    "filed", "imputed", "simplified", "articulated", "totals_adjustment", 
-    "outlier"
-  )
+  descr <- c("year", "inn", "region_taxcode", "okved_section", "okved", "age", "filed", "dissolution_date")
   
   # Список извлекаемых строк бухгалтерской отчетности
   lines <- c( 
@@ -51,6 +48,10 @@ extract_data <- function(required_year) {
     select(all_of(signs_used)) %>%
     collect()
 
+  df$region_taxcode <- substr(df$region_taxcode, 1, 2)
+  df$okved <- substr(df$okved, 1, 2)
+  df$dissolution_date <- year(ymd(df$dissolution_date))
+
   return(df)
 }
 
@@ -61,7 +62,7 @@ preprocess <- function(year_list) {
   
     df_year <- extract_data(year_one)
     write_dataset(df_year, 
-                path = "RFSD_preprocessed",
+                path = "D:\\sme-support\\Data\\RFSD_ready2",
                 partitioning = "year",
                 format = "parquet",
                 existing_data_behavior = "delete_matching") # корректная перезапись существующих данных
@@ -69,3 +70,5 @@ preprocess <- function(year_list) {
     writeLines(glue("Данные РББО за {year_one} год успешно предобработаны и сохранены."))
   }
 }
+
+preprocess(2018:2024)
