@@ -1,0 +1,1189 @@
+---
+title: "Оценивание с помощью базовой модели МНК с FE и модели IV-FE c лагами +1, +2"
+format:
+  html:
+    self-contained: true
+    grid:
+      body-width: 1000px  # По умолчанию 800px
+---
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| eval: true
+
+library(arrow)
+library(dplyr)
+library(data.table)
+library(modelsummary)
+library(fixest)
+library(MatchIt)
+library(corrplot)
+library(flextable)
+library(skimr)
+
+```
+
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| eval: true
+
+abt <- open_dataset("D:\\sme-support\\Data\\TABLES\\ABT1_5") |>
+    filter(year >= 2019) |> 
+    collect() |> 
+    as.data.table()
+
+#Чистка строковых переменных
+char_cols <- c("inn", "region", "okved", "cat", "okved_section")
+abt[, (char_cols) := lapply(.SD, function(x) trimws(as.character(x))), .SDcols = char_cols]
+
+#Создадим нелинейную переменную age^2
+abt[, age_sq := age^2]
+
+#оцениваемые параметры
+target0 <- c("ln_revenue", "aut")
+target1 <- c("ln_assets", "ln_revenue", "ash_profit", "eq_flex", "inv_eq", "aut")
+target <- target1
+
+control <- c("age", "age_sq", "lic", 
+"type_406", "new", "social", "hc_last", "cat", "ln_assets")
+
+support <- c("fin", "cap", "prom", "optim", "reduce")
+
+#Метка ликвидации: 1 только в год фактической ликвидации
+abt[, liquidated := as.numeric(!is.na(dissolution_date) & year == dissolution_date)]
+
+# abt <- abt1[inn %in% sample(unique(inn), 200000)]
+
+```
+
+# Корреляционная матрица ABT
+
+```{r}
+
+# Создаем список переменных (только те, что будут в регрессиях)
+core_vars <- c("age", "lic", "fin", "cap", "prom", "optim", "reduce", 
+"type_406", "new", "social", "hc_last", "ln_assets", "ln_revenue", "ash_profit", 
+"eq_flex", "inv_eq", "aut")
+
+# Считаем матрицу
+cor_y <- cor(abt[, ..core_vars],  use = "pairwise.complete.obs")
+
+# 2. Опционально: считаем p-values (чтобы скрыть незначимые корреляции)
+# Если связей очень много, лучше оставить только те, где p < 0.05
+res_p <- cor.mtest(abt[, ..core_vars], conf.level = 0.95)
+
+
+# Выводим в консоль
+round(cor_y, 2)
+
+# 3. Настраиваем вывод файла
+png("correlation_final.png", width = 2400, height = 2400, res = 300)
+
+corrplot(cor_y, 
+         method = "circle", 
+         type = "lower", 
+         # Текст и метки
+         tl.cex = 0.8,                # Размер шрифта подписей
+         tl.col = "black",            # Цвет подписей
+         tl.srt = 45,                 # Поворот подписей
+         # Коэффициенты
+         addCoef.col = "black",       # Добавить цифры поверх кружков
+         number.cex = 0.6,            # Размер цифр коэффициентов
+         # Группировка
+         order = "hclust",            # Сгруппировать похожие переменные (важно для науки)
+         diag = FALSE,                # Убрать диагональ (1.00)
+         # Значимость (убирает крестиком те, где p > 0.05)
+         p.mat = res_p$p, 
+         sig.level = 0.05, 
+         insig = "blank",             # Или "pch" для крестиков, или "blank" чтобы скрыть
+         # Цвета
+         col = COL2('RdBu', 10),      # Классическая красно-синяя шкала
+         mar = c(0, 0, 1, 0))         # Поля
+
+dev.off()
+
+
+```
+
+# Тест Вулдриджа
+
+```{r}
+
+library(plm)
+
+# 1. Выбираем, например, 50 000 уникальных ИНН (этого достаточно для теста)
+set.seed(123) # Для воспроизводимости
+random_inns <- sample(unique(abt$inn), 1000000)
+
+# 2. Вытягиваем из основной базы ВСЕ годы жизни для этих фирм
+abt_sample <- abt[inn %in% random_inns]
+
+# 3. Проверяем, что панель сохранилась
+print(abt_sample[, .N, by = inn][, mean(N)]) # Должно быть около 4 лет, как в основной базе
+
+# Превращаем подвыборку в объект pdata.frame
+p_sample <- pdata.frame(abt_sample, index = c("inn", "year"))
+
+# Запускаем тест Вулдриджа на наличие автокорреляции в остатках
+# (делаем на простой модели, так как тесту важна структура)
+pwartest(ln_revenue ~ fin + cap + prom + optim + reduce + hc_last + ln_assets + lic + social + factor(year) + age + new + factor(cat), data = p_sample)
+
+```
+
+# Мэтчинг
+
+```{r}
+
+gc()
+
+# Проводим мэтчинг
+# Мы делаем один общий мэтчинг по признаку "получал ли любую поддержку" 
+# Для простоты создадим дамми "any_support"
+# abt[, any_support := as.numeric(fin + cap + prom + optim + reduce > 0)] 
+
+match_obj <- matchit(reduce ~ hc_last + age + factor(okved_section) + factor(year) + factor(cat) + age_sq, 
+                     data = abt, 
+                     method = "cem",
+                     keep.constant = TRUE
+                     )
+
+# Извлекаем данные с весами
+
+abt_weighted <- match.data(match_obj)
+
+```
+
+# Проверка качества мэтчинга
+
+```{r}
+
+library(cobalt) # Специальный пакет для красивых графиков баланса
+
+small_sample <- abt_weighted[sample(.N, 300000)]
+love.plot(
+  reduce ~ hc_last + age + age_sq + lic + factor(cat) + factor(year) + new + social + factor(okved_section),             # формула: воздействие ~ переменные баланса
+  data = small_sample,
+  weights = "weights",                     # название колонки с весами в данных
+  method = "weighting",                    # указываем, что баланс за счет весов
+  thresholds = c(m = 0.1),                 # линия допустимого разброса
+  abs = TRUE,                              # берем абсолютные значения разности
+  var.order = "unadjusted",                # порядок как в данных
+  main = "Балансировка характеристик (CEM)"
+)
+
+```
+
+# Проверка влияния гос. поддержки на выживаемость фирм
+
+```{r}
+
+# # Используем логит - модель
+# survival <- feglm(
+#   liquidated ~ fin + cap + prom + optim + reduce + hc_last + age + age^2 + lic + type_406 + new + social + cat | 
+#   inn + year,
+#   data = abt,
+#   family = "logit",
+#   cluster = ~inn
+# )
+
+# etable(survival, tex = FALSE)
+
+survival_lpm <- feols(
+  liquidated ~ fin + cap + prom + optim + reduce + 
+               age + age_sq + hc_last + lic + type_406 + new + social + cat
+               | inn + year,   # фирма + год
+  data = abt,
+  cluster = ~inn
+)
+
+etable(survival_lpm, tex = FALSE)
+
+# # Используем логит - модель с мэтчингом
+# survival_match <- feglm(
+#   liquidated ~ fin + cap + prom + optim + reduce + hc_last + age + age^2 + lic + type_406 + new + social + cat | 
+#   okved + region + year,
+#   data = abt_weighted,
+#   weights = ~weights, # ВЕСА!
+#   # subset = ~ year >= 2019,
+#   family = "logit",
+#   cluster = ~inn
+# )
+
+# etable(survival, survival_match, tex = FALSE)
+
+abt[, fin_lag1 := shift(fin, type = "lag"), by = inn]
+abt[, cap_lag1 := shift(cap, type = "lag"), by = inn]
+abt[, prom_lag1 := shift(prom, type = "lag"), by = inn]
+abt[, optim_lag1 := shift(optim, type = "lag"), by = inn]
+abt[, reduce_lag1 := shift(reduce, type = "lag"), by = inn]
+
+survival_lag <- feols(liquidated ~ fin_lag1 + cap_lag1 + prom_lag1 + optim_lag1 + reduce_lag1 +
+                      age + age_sq + hc_last + lic + type_406 + new + social + cat
+                      | inn + year, data = abt, cluster = ~inn)
+
+etable(survival_lag, tex = FALSE)
+```
+
+# Наивная модель
+
+```{r}
+
+gc()
+
+naiv <- feols(.[target] ~ .[support] + .[control] | region + okved + year,
+data  = abt,
+# subset = ~ year >= 2019,
+cluster = ~inn,
+lean = TRUE
+)
+
+# # вывод результата
+# naiv_table <- msummary(
+#   naiv,
+#   stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+#   # coef_map = var_map,                          # Используем наши названия
+#   gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+#   output = "flextable",                         # Или "html", "latex", "kableExtra"
+#   title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+# )
+
+# 2. Сохраняем этот объект в Word
+# save_as_docx(naiv_table, path = "naiv_results.docx")
+
+#Сохранение результатов расчета
+# saveRDS(naiv, file = "D:\\sme-support\\Data\\Estimated\\naiv.rds")
+
+etable(naiv, tex = FALSE)
+```
+
+# Базовая модель OLS + FE
+
+```{r}
+
+gc()
+
+base <- feols(.[target] ~ .[support] + .[control] | inn + year,
+data  = abt,
+cluster = ~inn,
+nthreads = 0)
+
+# вывод результата
+# base_table <- msummary(
+#   base,
+#   stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+#   # coef_map = var_map,                          # Используем наши названия
+#   gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+#   output = "flextable",                         # Или "html", "latex", "kableExtra"
+#   title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+# )
+
+# 2. Сохраняем этот объект в Word
+# save_as_docx(base_table, path = "base_results.docx")
+
+#Сохранение результатов расчета
+# saveRDS(base, file = "D:\\sme-support\\Data\\Estimated\\base.rds")
+
+etable(base, tex = FALSE)
+
+```
+
+# Мэтчинг + OLS + FE
+
+```{r}
+
+gc()
+
+base_match <- feols(.[target] ~ .[support] + .[control] | inn + year,
+data  = abt_weighted,
+weights =~weights, 
+cluster = ~inn,
+nthreads = 0)
+
+# вывод результата
+base_match_table <- msummary(
+  base_match,
+  stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+  # coef_map = var_map,                          # Используем наши названия
+  gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+  output = "flextable",                         # Или "html", "latex", "kableExtra"
+  title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+)
+
+# 2. Сохраняем этот объект в Word
+save_as_docx(base_match_table, path = "base_match_optim.docx")
+
+#Сохранение результатов расчета
+# saveRDS(base_match, file = "D:\\sme-support\\Data\\Estimated\\base_match_results.rds")
+
+# etable(base_match, tex = FALSE)
+
+```
+
+# IV (доля в том же регионе в той же отрасли в том же году)
+
+```{r}
+
+#Создаем инструментальные переменные для поддержек всем наборе данных abt 
+
+support <- c("fin", "cap", "prom", "optim", "reduce")
+# #Создаем агрегированную таблицу по Региону, Отрасли и Году (cчитаем сумму поддержек и общее кол-во МСП в группе)
+regional_industry_stats <- abt[, .(
+  sum_fin = sum(fin, na.rm = TRUE),
+  sum_cap    = sum(cap, na.rm = TRUE),
+  sum_prom  = sum(prom, na.rm = TRUE),
+  sum_optim = sum(optim, na.rm = TRUE),
+  sum_reduce  = sum(reduce, na.rm = TRUE),
+  n_firms        = .N
+), by = .(region, okved, year)]
+
+# #Присоединяем статистику обратно к основной панели abt
+abt <- merge(abt, regional_industry_stats, 
+             by = c("region", "okved", "year"), 
+             all.x = TRUE)
+
+# #Вычисляем инструменты (IV) с использованием leave-one-out (Сумма поддержек в группе - поддержка текущей фирмы) / (Всего фирм в группе - 1)
+for (var in support) {
+  sum_col <- paste0("sum_", var)
+  iv_col <- paste0("iv_", var)
+  
+  abt[, (iv_col) := (get(sum_col) - get(var)) / (n_firms - 1)]
+  
+  # Если в группе была всего 1 фирма, получится NaN. Заменяем на 0.
+  abt[is.nan(get(iv_col)) | is.infinite(get(iv_col)), (iv_col) := 0]
+
+}
+
+# #Удаляем промежуточные колонки сумм, чтобы не загромождать таблицу
+abt[, c(paste0("sum_", support), "n_firms") := NULL]
+iv_support <- c("iv_fin", "iv_cap", "iv_prom", "iv_optim", "iv_reduce")
+```
+
+```{r}
+#проверка на мультколлинеарность
+
+core_vars <- c("iv_fin", "iv_cap", "iv_prom", "iv_optim", "iv_reduce")
+
+# Считаем матрицу
+cor_y <- cor(abt[, ..core_vars], use = "pairwise.complete.obs")
+
+# Выводим в консоль
+round(cor_y, 2)
+
+```
+
+```{r}
+# оценка
+
+gc()
+
+iv <- feols(.[target] ~ .[control] | inn + year | fin + cap + prom + optim + reduce ~ iv_fin + iv_cap + iv_prom + iv_optim + iv_reduce,
+data  = abt,
+# weights =~weights, 
+cluster = ~region + okved
+)
+
+etable(iv, tex = FALSE)
+# Результаты F1 - теста
+lapply(iv, fitstat, c("ivf", "wh"))
+```
+
+# Another IV (в других регионах в этой отрасли в том же году и в других регионах в этой отрасли в прошлом году)
+
+```{r}
+
+#расчет
+# 1. Список мер
+support_vars <- c("fin", "cap", "prom", "optim", "reduce")
+
+# 2. Считаем агрегаты: общие по отрасли (Total) и локальные (Local)
+# Считаем всё сразу, чтобы избежать проблем с merge
+agg_stats <- abt[, .(
+  total_sum_fin = sum(fin, na.rm = TRUE),
+  total_sum_cap = sum(cap, na.rm = TRUE),
+  total_sum_prom = sum(prom, na.rm = TRUE),
+  total_sum_optim = sum(optim, na.rm = TRUE),
+  total_sum_reduce = sum(reduce, na.rm = TRUE),
+  total_n = .N
+), by = .(okved, year)]
+
+local_stats <- abt[, .(
+  local_sum_fin = sum(fin, na.rm = TRUE),
+  local_sum_cap = sum(cap, na.rm = TRUE),
+  local_sum_prom = sum(prom, na.rm = TRUE),
+  local_sum_optim = sum(optim, na.rm = TRUE),
+  local_sum_reduce = sum(reduce, na.rm = TRUE),
+  local_n = .N
+), by = .(okved, region, year)]
+
+# 3. Объединяем и считаем IV (доля в других регионах)
+iv_data <- merge(local_stats, agg_stats, by = c("okved", "year"))
+
+for(v in support_vars){
+  iv_name <- paste0("iv_", v, "_others")
+  t_sum <- paste0("total_sum_", v)
+  l_sum <- paste0("local_sum_", v)
+  
+  # Считаем долю в других регионах
+  iv_data[, (iv_name) := (get(t_sum) - get(l_sum)) / (total_n - local_n)]
+  # Чистим ошибки (если отрасль только в 1 регионе)
+  iv_data[is.nan(get(iv_name)) | is.infinite(get(iv_name)), (iv_name) := 0]
+}
+
+# 4. Присоединяем к основной базе
+cols_to_keep <- c("okved", "region", "year", paste0("iv_", support_vars, "_others"))
+abt <- merge(abt, iv_data[, ..cols_to_keep], by = c("okved", "region", "year"), all.x = TRUE)
+
+# 5. СОЗДАЕМ ЛАГИ (t-1)
+setkey(abt, inn, year)
+iv_cols <- paste0("iv_", support_vars, "_others")
+lag_iv_cols <- paste0("lag_", iv_cols)
+
+# Создаем лаги для всех инструментов разом
+abt[, (lag_iv_cols) := lapply(.SD, function(x) shift(x, n = 1, type = "lag")), 
+    by = inn, .SDcols = iv_cols]
+
+```
+
+```{r}
+# проверка на мультиколлинеарность
+
+core_vars <- c("iv_fin_others", "iv_cap_others", "iv_prom_others", "iv_optim_others", "iv_reduce_others")
+
+# Считаем матрицу
+cor_y <- cor(abt[, ..core_vars], use = "pairwise.complete.obs")
+
+# Выводим в консоль
+round(cor_y, 2)
+```
+
+```{r}
+
+gc()
+
+iv_others <- feols(.[target] ~ .[control] | inn + year | fin + cap + prom + optim + reduce ~ iv_fin_others + iv_cap_others + iv_prom_others + iv_optim_others + iv_reduce_others,
+data  = abt,
+# weights =~weights, 
+cluster = ~region + okved
+)
+
+etable(iv_others, tex = FALSE)
+# Результаты F1 - теста
+lapply(iv_others, fitstat, c("ivf", "wh"))
+
+```
+
+# Next another IV (в других регионах и с лагом в один год)
+
+```{r}
+# проверка на мультиколлинеарность
+
+core_vars <- c("lag_iv_fin_others", "lag_iv_cap_others", "lag_iv_prom_others", "lag_iv_optim_others", "lag_iv_reduce_others")
+
+# Считаем матрицу
+cor_y <- cor(abt[, ..core_vars], use = "pairwise.complete.obs")
+
+# Выводим в консоль
+round(cor_y, 2)
+
+```
+
+```{r}
+
+gc()
+
+lag_iv_others <- feols(.[target] ~ .[control] | inn + year | fin + cap + prom + optim + reduce ~ lag_iv_fin_others + lag_iv_cap_others + lag_iv_prom_others + lag_iv_optim_others + lag_iv_reduce_others,
+data = abt,
+# weights =~weights, 
+cluster = ~region + okved
+)
+
+etable(lag_iv_others, tex = FALSE)
+# Результаты F1 - теста
+lapply(lag_iv_others, fitstat, c("ivf", "wh"))
+
+```
+
+```{r}
+
+# 1. Списки переменных
+support_vars <- c("fin", "cap", "prom", "optim", "reduce")
+target_vars  <- c("ln_revenue", "aut")
+ 
+# Базовые контроли (без других поддержек)
+base_controls <- c("hc_last", "age_sq", "lic", "social", "new", "type_406", "cat", "ln_assets")
+
+# Список для хранения итогов
+iv_models <- list()
+
+# 2. Цикл перебора
+for (target in target_vars) {
+  for (support in support_vars) {
+    
+    # Другие поддержки в этой модели идут как обычные контроли
+    others <- setdiff(support_vars, support)
+    
+    # Условие для активов (чтобы не было X=X)
+    current_x <- if(target == "ln_assets") base_controls else c(base_controls, "ln_assets")
+    
+    # Формируем формулу для feols
+    # Y ~ Controls + Others | FE | Endog ~ Lag_IV_Others
+    fml <- as.formula(paste0(
+      target, " ~ ", paste(c(current_x, others), collapse = " + "), 
+      " | inn + year | ", 
+      support, " ~ lag_iv_", support, "_others"
+    ))
+    
+    model_id <- paste0(target, "_", support)
+    
+    # Запускаем расчет (только там, где есть лаг инструмента)
+    iv_models[[model_id]] <- feols(fml, data = abt[!is.na(get(paste0("lag_iv_", support, "_others")))], 
+                                   cluster = ~region + okved)
+  }
+}
+
+# 3. Вывод результатов (например, только для выручки)
+rev_models <- iv_models[grep("ln_revenue_", names(iv_models))]
+etable(rev_models, tex = FALSE, headers = support_vars)
+
+# 4. Вывод результатов для автономии (aut)
+aut_models <- iv_models[grep("aut_", names(iv_models))]
+etable(aut_models, tex = FALSE, headers = support_vars)
+
+# Проверка силы инструментов для выручки
+lapply(rev_models, fitstat, c("ivf", "wh"))
+
+```
+
+# DML
+
+```{r}
+
+library(DoubleML)
+library(mlr3)
+library(mlr3learners)
+library(data.table)
+
+# 1. Подготовка данных (DML не любит NA и FE "в лоб")
+# Вычтем средние по годам и отраслям заранее (Demeaning), чтобы имитировать FE
+# Это позволит DML сфокусироваться на чистом эффекте
+
+vars_dml <- c("ln_assets", "ln_revenue",  "ash_profit", "eq_flex", "inv_eq", "aut", "fin", "hc_last", "lic", "type_406", "new", "social", "cap", "prom", "optim", "reduce", "age", "cat")
+
+dt_dml <- na.omit(abt[sample(.N, 500000), ..vars_dml])
+
+# 2. Превращаем логические (lic, social) в 0/1
+cols_logic <- c("lic", "social", "new")
+dt_dml[, (cols_logic) := lapply(.SD, as.numeric), .SDcols = cols_logic]
+
+# 3. Разворачиваем переменную 'cat' в дамми-колонки (cat_micro, cat_small и т.д.)
+# Используем встроенную функцию model.matrix
+dummies <- model.matrix(~ cat - 1, data = dt_dml)
+dt_dml <- cbind(dt_dml[, !"cat"], as.data.table(dummies))
+
+# Очищаем имена новых колонок от спецсимволов (DoubleML это любит)
+setnames(dt_dml, names(dt_dml), gsub(" ", "_", names(dt_dml)))
+
+# 2. Инициализация данных для DoubleML
+# y - выручка, d - поддержка (fin), x - контроли
+dml_data = DoubleMLData$new(dt_dml, 
+                            y_col = "ln_revenue", 
+                            d_cols = "fin", 
+                            x_cols = c("lic", "age", "ln_assets","type_406", "new", "social", "hc_last", "cap", "prom", "optim", "reduce", "cat1", "cat2", "cat3"))
+
+
+# # 3. Выбор "учителей" (Learners)
+# # Используем Lasso для скорости (или ranger для точности, если память позволит)
+# lrn_lss = lrn("regr.cv_glmnet") # для предсказания выручки
+# lrn_lss_class = lrn("classif.cv_glmnet") # для предсказания вероятности поддержки
+
+
+
+# # 4. Создание модели DML (Partially Linear Regression)
+# dml_plr = DoubleMLPLR$new(dml_data,
+#                           ml_l = lrn_lss, 
+#                           ml_m = lrn_lss_class, 
+#                           n_folds = 3,  # 3-кратный кросс-фиттинг
+#                           n_rep = 1,
+#                           ) 
+
+
+# Установите: install.packages("xgboost")
+lrn_xgb = lrn("regr.xgboost", nrounds = 100, max_depth = 5, eta = 0.1)
+lrn_xgb_cl = lrn("classif.xgboost", nrounds = 100, max_depth = 5, eta = 0.1)
+
+dml_plr = DoubleMLPLR$new(dml_data, 
+ml_l = lrn_xgb, 
+ml_m = lrn_xgb_cl, 
+n_folds = 3)
+
+
+
+# 5. Обучение и получение результата
+dml_plr$fit()
+print(dml_plr$summary())
+
+```
+
+
+```{r}
+
+library(data.table)
+library(DoubleML)
+library(mlr3)
+library(mlr3learners)
+
+# 1. Выбираем данные
+all_vars <- c("ash_profit", "fin", "cap", "prom", "optim", "reduce", 
+              "ln_assets", "hc_last", "age", "lic", "social", "new", "type_406",
+              "cat", "region", "okved", "year")
+
+dt_dml <- na.omit(abt[sample(.N, 500000), ..all_vars])
+
+# 2. Превращаем логические (lic, social) в 0/1
+cols_logic <- c("lic", "social", "new")
+dt_dml[, (cols_logic) := lapply(.SD, as.numeric), .SDcols = cols_logic]
+
+# 2. Создаем дамми для ВСЕХ категорий разом (cat, region, okved)
+# Формула ~ . - 1 создаст дамми для всех факторов
+# Превращаем в факторы те, что еще не факторы
+cols_factor <- c("cat", "region", "okved", "year")
+dt_dml[, (cols_factor) := lapply(.SD, as.factor), .SDcols = cols_factor]
+
+# 1. Готовим список переменных (без таргета)
+# Убедитесь, что ln_revenue есть в исходном dt_dml
+vars_for_matrix <- setdiff(names(dt_dml), "ash_profit")
+
+# 2. Создаем матрицу дамми-переменных ТОЛЬКО для предикторов
+# Используем формулу ~ . - 1, чтобы развернуть все факторы
+X_mat <- model.matrix(~ . - 1, data = dt_dml[, ..vars_for_matrix])
+dt_dml_wide <- as.data.table(X_mat)
+
+# 3. ДОБАВЛЯЕМ таргет обратно в широкую таблицу
+dt_dml_wide[, ash_profit := dt_dml$ash_profit]
+
+# 4. Очищаем имена (убираем точки и спецсимволы)
+setnames(dt_dml_wide, names(dt_dml_wide), make.names(names(dt_dml_wide)))
+
+```
+
+```{r}
+
+# Инициализация данных (x_cols подтянутся автоматически — всё, кроме y и d)
+dml_data_full = DoubleMLData$new(dt_dml_wide, 
+                                 y_col = "ash_profit",
+                                 d_cols = "fin")
+
+# Настраиваем XGBoost для DML
+# Снижаем eta и ставим достаточный nrounds для обучения на 160+ признаках
+lrn_xgb = lrn("regr.xgboost", eta = 0.05, nrounds = 300, max_depth = 5)
+lrn_xgb_cl = lrn("classif.xgboost", eta = 0.05, nrounds = 300, max_depth = 5)
+
+dml_plr_xgb = DoubleMLPLR$new(dml_data_full,
+                              ml_l = lrn_xgb,
+                              ml_m = lrn_xgb_cl,
+                              n_folds = 3,
+                              n_rep = 1) # для первого теста ставим 1, если ок - увеличим
+
+dml_plr_xgb$fit()
+print(dml_plr_xgb$summary())
+
+```
+
+# DML2
+
+```{r}
+
+library(data.table)
+library(DoubleML)
+library(mlr3)
+library(mlr3learners)
+
+# Выбираем нужные переменные, обязательно включаем inn
+all_vars <- c("inn", "ash_profit", "ln_revenue", "eq_flex", "inv_eq", "aut", 
+              "fin", "cap", "prom", "optim", "reduce", "ln_assets", "hc_last", 
+              "age", "lic", "social", "new", "type_406", "cat", "region", "okved", "year")
+
+# Для теста – 500k, для финала – все данные
+# dt_dml <- na.omit(abt[sample(.N, 500000), ..all_vars])
+
+dt_dml <- na.omit(abt, cols = setdiff(names(abt), "dissolution_date"))
+
+# Приводим логические к 0/1
+cols_logic <- c("lic", "social", "new")
+dt_dml[, (cols_logic) := lapply(.SD, as.numeric), .SDcols = cols_logic]
+
+# Категориальные переменные как факторы (year тоже)
+cols_factor <- c("cat", "region", "okved", "year")
+dt_dml[, (cols_factor) := lapply(.SD, as.factor), .SDcols = cols_factor]
+
+```
+
+```{r}
+
+# Центрируем по фирме все переменные, кроме inn, region, okved (они time-invariant и будут обнулены, их исключаем)
+# Оставляем категориальные переменные, которые не меняются во времени?
+# Обычно в within-преобразовании time-invariant переменные исчезают, так как их отклонение = 0.
+# Поэтому region, okved не включаем в центрирование и потом не используем в x_cols.
+# year оставляем, так как он меняется.
+
+# Шаг 1: создаём дамми для cat (фактор)
+# Убираем один уровень, чтобы избежать полной коллинеарности (после within-преобразования 
+# линейная зависимость всё равно исчезнет, но для безопасности можно убрать)
+
+# Делаем cat фактором, чтобы знать уровни
+dt_dml[, cat := as.factor(cat)]
+
+dt_dml[, cat2 := as.numeric(cat == "2")]
+dt_dml[, cat3 := as.numeric(cat == "3")]
+
+time_varying <- c("ash_profit", "ln_revenue", "eq_flex", "inv_eq", "aut", "fin", 
+                  "cap", "prom", "optim", "reduce", "ln_assets", "hc_last", "age", 
+                  "lic", "social", "new", "type_406", "cat2", "cat3")
+
+dt_within <- dt_dml[, lapply(.SD, function(x) x - mean(x, na.rm = TRUE)), 
+                     by = inn, .SDcols = time_varying]
+
+# Добавляем обратно inn, year, okved, region (годовые дамми останутся, чтобы учесть временные FE)
+dt_within[, `:=`(inn = dt_dml$inn, year = dt_dml$year, okved = dt_dml$okved, region = dt_dml$region)]
+
+```
+
+```{r}
+
+# Создаём дамми для года (убираем одну категорию)
+year_dummies <- model.matrix(~ year - 1, data = dt_within)[, -1]  # полный набор или с базовой
+colnames(year_dummies) <- paste0("year_", levels(dt_within$year)[-1])
+dt_dml_final <- cbind(dt_within, year_dummies)
+
+# Создаем уникальный ID для каждой пары Регион-Отрасль
+dt_dml_final[, region_okved_id := .GRP, by = .(region, okved)]
+
+
+```
+
+```{r}
+
+# Определяем x_cols
+x_cols <- c("cap", "prom", "optim", "fin",          # остальные меры поддержки
+            "hc_last", "age", "lic", "social", "new", "type_406", "cat2", "cat3", 
+            colnames(year_dummies))                    # годовые дамми
+
+# dml_data <- DoubleMLClusterData$new(
+#   data = dt_dml_final,
+#   y_col = "ln_revenue",
+#   d_cols = "fin",                     # одна мера лечения
+#   x_cols = x_cols,
+#   cluster_cols = "region_okved_id" # кластеризация на уровне регион - отрасль
+# )
+
+dml_data <- DoubleMLData$new(
+  data = dt_dml_final,
+  y_col = "aut",
+  d_cols = "reduce",                     # одна мера лечения
+  x_cols = x_cols
+)
+
+```
+
+
+```{r}
+library(future)
+
+plan(multisession, workers = 8)
+# 1. Снимаем ограничение на размер передаваемых объектов
+options(future.globals.maxSize = Inf)
+
+set.seed(999)
+
+lrn_xgb_y <- lrn("regr.xgboost", eta = 0.05, nrounds = 150, max_depth = 4, nthread = 1)
+lrn_xgb_d <- lrn("regr.xgboost", eta = 0.05, nrounds = 150, max_depth = 4, nthread = 1)
+
+dml_plr <- DoubleMLPLR$new(dml_data,
+                           ml_l = lrn_xgb_y,
+                           ml_m = lrn_xgb_d,
+                           n_folds = 5,
+                           n_rep = 1
+                           )
+
+dml_plr$fit()   # <-- передаём вектор идентификаторов кластеров
+print(dml_plr$summary())
+
+# # Этот блок перезапустит вычисления (или сделайте это при финальном прогоне)
+# log_output <- capture.output({
+#   dml_plr$fit()
+# })
+
+# # Записываем логи в файл
+# writeLines(log_output, "dml_execution_log.txt")
+
+# sink("dml_results_summary.txt")
+# print(dml_plr$summary())
+# sink()
+
+# # Записываем технический паспорт модели в файл
+# sink("dml_model_specification.txt")
+# print(dml_plr)
+# sink()
+
+
+```
+
+# 4 Исследование инерционности и гетерогенности эффектов
+
+# 4.1 Датасет с  лагами всех поддержек в году year из года year - 1 и year - 2
+
+```{r}
+
+# Принудительно задаем ключи панели для корректного сдвига
+setkey(abt, inn, year)
+
+support_vars <- c("fin", "cap", "prom", "optim", "reduce")
+lag_support_cols <- paste0("lag_", support_vars)
+lag2_support_cols <- paste0("lag2_", support_vars)
+
+# Сдвигаем поддержки на 1 год назад внутри каждой фирмы для переменных lag
+abt[, (lag_support_cols) := lapply(.SD, function(x) shift(x, n = 1, type = "lag")), 
+    by = inn, .SDcols = support_vars]
+
+# Сдвигаем поддержки на 2 года назад внутри каждой фирмы для переменных lag2
+abt[, (lag2_support_cols) := lapply(.SD, function(x) shift(x, n = 2, type = "lag")), 
+    by = inn, .SDcols = support_vars]
+
+#3.СОХРАНЕНИЕ ДАТАСЕТА с лагами
+write_dataset(abt, 
+    path = "D:\\sme-support\\Data\\TABLES\\ABT1_5_lags",
+    partitioning = "year",
+    format = "parquet",
+    existing_data_behavior = "delete_matching")
+
+```
+
+# загружаем датасет с лагами
+
+```{r}
+
+library(arrow)
+library(dplyr)
+library(data.table)
+library(MatchIt)
+library(fixest)
+library(cobalt) # Специальный пакет для красивых графиков баланса
+library(modelsummary)
+library(flextable)
+
+abt <- open_dataset("D:\\sme-support\\Data\\TABLES\\ABT1_5_lags") |>
+    filter(year >= 2019) |> 
+    collect() |> 
+    as.data.table()
+
+#Чистка строковых переменных
+char_cols <- c("inn", "region", "okved", "cat", "okved_section")
+abt[, (char_cols) := lapply(.SD, function(x) trimws(as.character(x))), .SDcols = char_cols]
+
+target <- c("ln_assets", "ln_revenue", "ash_profit", "eq_flex", "inv_eq", "aut")
+
+control <- c("age", "age_sq", "lic", 
+"type_406", "new", "social", "hc_last", "cat", "ln_assets")
+
+support <- c("fin", "cap", "prom", "optim", "reduce")
+
+support_lag <- c("lag_fin", "lag_cap", "lag_optim", "lag_reduce", "lag_prom")
+
+support_lag2 <- c("lag2_fin", "lag2_cap", "lag2_optim", "lag2_reduce", "lag2_prom")
+
+```
+
+# Только для плацебо - теста №2!!!!!
+
+```{r}
+
+abt[, placebo_fin := sample(fin)]
+
+# Принудительно задаем ключи панели для корректного сдвига
+setkey(abt, inn, year)
+
+support_vars <- c("placebo_fin")
+lag_support_cols <- paste0("lag_", support_vars)
+lag2_support_cols <- paste0("lag2_", support_vars)
+
+# Сдвигаем поддержки на 1 год назад внутри каждой фирмы для переменных lag
+abt[, (lag_support_cols) := lapply(.SD, function(x) shift(x, n = 1, type = "lag")), 
+    by = inn, .SDcols = support_vars]
+
+# Сдвигаем поддержки на 2 года назад внутри каждой фирмы для переменных lag2
+abt[, (lag2_support_cols) := lapply(.SD, function(x) shift(x, n = 2, type = "lag")), 
+    by = inn, .SDcols = support_vars]
+
+```
+
+# Мэтчим выборку по переменной x
+```{r}
+
+supp <- "fin"
+abt_clean <- abt[!is.na(get(supp))]
+
+match_obj <- matchit(as.formula(paste0(supp," ~ ", "hc_last + age + factor(okved_section) + factor(year) + factor(cat) + age_sq")), 
+                     data = abt_clean, 
+                     method = "cem",
+                     keep.constant = TRUE
+                     )
+
+# Извлекаем данные с весами
+abt_weighted <- match.data(match_obj)
+
+small_sample <- abt_weighted[sample(.N, 300000)]
+love.plot(
+  as.formula(paste0(supp, "~ hc_last + age + age_sq + lic + factor(cat) + factor(year) + new + social + factor(okved_section)")),             # формула: воздействие ~ переменные баланса
+  data = small_sample,
+  weights = "weights",                     # название колонки с весами в данных
+  method = "weighting",                    # указываем, что баланс за счет весов
+  thresholds = c(m = 0.1),                 # линия допустимого разброса
+  abs = TRUE,                              # берем абсолютные значения разности
+  var.order = "unadjusted",                # порядок как в данных
+  main = "Балансировка характеристик (CEM)"
+)
+
+```
+
+# Средние значения исследуемых показателей в контрольных группах отдельно для разных поддержек
+
+```{r}
+
+abt_weighted[reduce == 0, .(
+
+  mean_eq_flex = weighted.mean(eq_flex, w = weights, na.rm = TRUE),
+  mean_inv_eq  = weighted.mean(inv_eq, w = weights, na.rm = TRUE),
+  mean_aut     = weighted.mean(aut, w = weights, na.rm = TRUE)
+
+)]
+
+```
+
+# Оценки эффектов прошлогодней поддержки
+
+```{r}
+
+gc()
+
+base_match <- feols(.[target] ~ .[support] + .[support_lag] + .[control] | inn + year,
+data  = abt_weighted,
+weights =~weights, 
+cluster = ~inn,
+nthreads = 0)
+
+etable(base_match, tex = FALSE)
+
+```
+
+# Оценки эффектов позапрошлогодней поддержки
+
+```{r}
+
+gc()
+
+base_match <- feols(.[target] ~ .[support] + .[support_lag] + .[support_lag2] + .[control] | inn + year,
+data  = abt_weighted,
+weights =~weights, 
+cluster = ~inn,
+nthreads = 0)
+
+etable(base_match, tex = FALSE)
+
+```
+
+# Гетерогенность по масштабу бизнеса
+
+```{r}
+
+# 3. Добавляем признак микробизнеса внутри этого же датасета
+abt_weighted[, micro := as.numeric(cat == "1")]
+
+# 4. Запускаем регрессию гетерогенности на этих весах
+het <- feols(
+  .[target] ~ i(micro, fin, ref = 0) +  
+               cap + prom + fin + 
+               optim + reduce +
+               .[control] | inn + year, 
+  data = abt_weighted, 
+  weights = ~weights, 
+  cluster = ~inn
+)
+
+etable(het, keep = c("fin"), tex = FALSE)
+
+# вывод результата
+het_table <- msummary(
+  het,
+  stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+  # coef_map = var_map,                          # Используем наши названия
+  gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+  output = "flextable",                         # Или "html", "latex", "kableExtra"
+  title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+)
+
+# 2. Сохраняем этот объект в Word
+save_as_docx(het_table, path = "het_micro_fin.docx")
+
+```
+
+# Гетерогенность по отраслям
+
+```{r}
+
+# 4. Запускаем регрессию гетерогенности на этих весах
+het <- feols(
+  .[target] ~ i(I(okved == "47"), fin, ref = FALSE) +  
+               cap + prom +
+               optim + reduce +
+               .[control] | inn + year, 
+  data = abt_weighted, 
+  weights = ~weights, 
+  cluster = ~inn
+)
+
+etable(het, keep = c("fin"), tex = FALSE)
+
+# вывод результата
+# het_table <- msummary(
+#   het,
+#   stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+#   # coef_map = var_map,                          # Используем наши названия
+#   gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+#   output = "flextable",                         # Или "html", "latex", "kableExtra"
+#   title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+# )
+
+# # 2. Сохраняем этот объект в Word
+# save_as_docx(het_table, path = "het_47_fin.docx")
+
+```
+
+
+# Проверка робастности метода CEM + FE с помощью плацебо-теста на целевую переменную
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Синтезируем плацебо-целевую переменную на основе ИНН
+# Превращаем ИНН в строку, берем символы с 5 по 10 (или до конца), переводим в число и логарифмируем
+# Добавим +1 на случай, если у кого-то там нули, чтобы корректно взялся логарифм
+abt_weighted[, placebo_y := log(as.numeric(substr(as.character(inn), 5, nchar(as.character(inn)))) + 1)]
+
+gc()
+
+placebo1 <- feols(placebo_y ~ .[support] + .[support_lag] + .[support_lag2] + .[control] | inn + year,
+data  = abt_weighted,
+weights =~weights, 
+cluster = ~inn,
+nthreads = 0)
+
+etable(placebo1, tex = FALSE)
+
+# вывод результата
+placebo1_table <- msummary(
+  placebo1,
+  stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+  # coef_map = var_map,                          # Используем наши названия
+  gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+  output = "flextable",                         # Или "html", "latex", "kableExtra"
+  title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+)
+
+# 2. Сохраняем этот объект в Word
+save_as_docx(placebo1_table, path = "placebo1.docx")
+
+```
+
+
+# Проверка робастности метода CEM + FE с помощью фиктивной поддержки
+
+
+```{r}
+
+# 1. Создаем глубокую копию рабочей мэтченной выборки, чтобы не испортить оригинал
+# dt_placebo_t <- copy(abt_weighted[weights > 0])
+
+# 2. Рандомизируем (перемешиваем) значения fin с помощью функции sample()
+# Функция sample(fin) перемешивает вектор случайным образом
+
+
+# 3. Принудительно задаем панельный ключ для корректного расчета лагов от placebo_fin
+# setkey(dt_placebo_t, inn, year)
+
+# 4. Запускаем регрессию CEM + FE на перемешанных данных
+# Нам нужно рассчитать лаги именно от перемешанной переменной placebo_fin!
+res_placebo_treatment <- feols(
+  .[target] ~ placebo_fin + lag_placebo_fin + lag2_placebo_fin +
+               cap + lag_cap + lag2_cap + prom + lag_prom + lag2_prom + 
+               optim + lag_optim + lag2_optim + reduce + lag_reduce + lag2_reduce +
+               .[control] | inn + year, 
+  data = abt_weighted, 
+  weights = ~weights, 
+  # panel.id = c("inn", "year"),
+  cluster = ~inn
+)
+
+# Выводим результаты в консоль
+etable(res_placebo_treatment, keep = "placebo_fin", tex = FALSE)
+
+# вывод результата
+placebo2_table <- msummary(
+  res_placebo_treatment,
+  stars = c('*' = .1, '**' = .05, '***' = .01), # Те же уровни значимости
+  # coef_map = var_map,                          # Используем наши названия
+  gof_map = c("nobs", "r.squared", "adj.r.squared"), # Оставляем только нужные статистики
+  output = "flextable",                         # Или "html", "latex", "kableExtra"
+  title = "Наивная модель (Pooled OLS): Эффекты господдержки"
+)
+
+# 2. Сохраняем этот объект в Word
+save_as_docx(placebo2_table, path = "placebo2.docx")
+
+```
+
+
+# Статистики поддержки
+по секциям отраслей
+```{r}
+library(openxlsx2) 
+
+# 1. Задаем вектор с именами колонок поддержки
+support_cols <- c("fin", "cap", "optim", "reduce", "prom")
+
+# 2. Агрегируем данные (быстрый расчет по группам)
+result_dt_cat <- abt[, lapply(.SD, function(x) sum(x == 1, na.rm = TRUE)), 
+                           by = cat, 
+                           .SDcols = support_cols]
+
+# 3. Считаем сумму строк в отдельную колонку и сортируем
+result_dt[, total_support := rowSums(.SD, na.rm = TRUE), .SDcols = support_cols]
+setorder(result_dt, -total_support) # Сверхбыстрая сортировка "на месте"
+
+# 4. Удаляем временную колонку total_support, если она не нужна в Excel
+# result_dt[, total_support := NULL]
+
+# 5. Выгружаем в Excel
+write_xlsx(
+  x = result_dt_cat, 
+  file = "support_by_cat.xlsx", 
+  sheet = "Поддержка по ОКВЭД",
+  as_table = TRUE
+)
+
+cat("Готово! Файл 'support_by_cat.xlsx' успешно сохранен.")
+
+```
+
+по категориям субъектов
+
+
+
+
+

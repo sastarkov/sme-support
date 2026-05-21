@@ -1,0 +1,157 @@
+---
+title: "Untitled"
+format: html
+---
+
+# Статистический анализ исходных наборов данных
+
+```{r}
+
+library(arrow)
+library(dplyr)
+library(data.table)
+library(skimr)
+library(car)
+
+```
+
+## 1.Загрузка и статистический анализ данных из RFSD
+
+```{r}
+
+ds_rfsd <- open_dataset("D:\\sme-support\\Data\\RFSD_ready2")
+schema(ds_rfsd)
+
+dt_rfsd <- ds_rfsd |> 
+  collect() |> 
+  as.data.table() |> 
+  unique(by = c("inn", "year"))
+
+setkey(dt_rfsd, inn, year)
+```
+
+```{r}
+
+```
+
+## 2.Загрузка и статистический анализ данных из реестра МСП
+
+```{r}
+
+schema_msp <- schema(inn = string(), months = int32(), prefer_category = string(), months_new = int32(), months_social = int32(), has_license = bool(), headcount = double(), year = int32())
+
+ds_msp <- open_dataset("D:\\sme-support\\Data\\MSP_ready", schema = schema_msp) |> 
+  # select(-c(previous_start_date)) |> 
+  filter(year >= 2018, year <= 2024)
+
+dt_msp <- ds_msp |> 
+  collect() |>
+  as.data.table() |> 
+  unique(by = c("inn", "year"))
+
+setkey(dt_msp, inn, year)
+```
+
+```{r}
+
+head(dt_msp)
+skim(dt_msp)
+
+cor_matrix <- dt_msp |> 
+  select(-c(inn, year, has_license, prefer_category)) |> 
+  cor(use = "complete.obs", method = "pearson")
+```
+
+## 3.Загрузка и статистический анализ данных из реестра поддержек
+
+```{r}
+ds_supp_bin <- open_dataset("D:\\sme-support\\Data\\Support\\support_binary_final.parquet") #датасет с бинарными мерами поддержки
+ds_supp_cont <- open_dataset("D:\\sme-support\\Data\\Support\\support_continuous.parquet") #датасет с непрерывными мерами поддержки
+
+dt_supp_bin <- ds_supp_bin |> 
+  collect() |> 
+  as.data.table()
+
+dt_supp_cont <- ds_supp_cont |> 
+  collect() |> 
+  as.data.table()
+
+setkey(dt_supp_bin, inn, year)
+setkey(dt_supp_cont, inn, year)
+```
+
+### 3.2.Проверка на мультиколлинеарность
+
+#### Корреляционная матрица
+
+```{r}
+cor_matrix_bin <- cor(dt_supp_bin[, -c(1, 2)], method = "pearson")
+print(cor_matrix_bin)
+cor_matrix_cont <- cor(dt_supp_cont[, -c(1, 2)], method = "pearson")
+```
+
+#### VIF
+
+```{r}
+#для бинарной поддержки
+types <- names(dt_supp_bin)[-c(1, 2)]
+formula_vif <- as.formula(paste("year ~", paste(types, collapse = " + ")))
+model_vif <- lm(formula_vif, data = dt_supp_bin) 
+vif_values <- vif(model_vif)
+print(vif_values)
+
+#для непрерывной поддержки
+types2 <- names(dt_supp_cont)[-c(1, 2)]
+formula_vif2 <- as.formula(paste("year ~", paste(types2, collapse = " + ")))
+model_vif2 <- lm(formula_vif2, data = dt_supp_cont)
+vif_values2 <- vif(model_vif2)
+print(vif_values2)
+```
+
+## 4.Создание единого набора данных (ABT)
+
+### 4.1.Сливаем датасеты RFSD и МСП с помощью inner join (только те субъекты МСП, по которым есть записи в RFSD в конкретном году)
+
+```{r}
+
+dt_msp_rfsd <- dt_rfsd[dt_msp, nomatch = 0]
+
+```
+
+### 4.2.Присоединяем к сборному датасету субъектов МСП и данных отчетности датасет с мерами поддержки с помощью left join
+
+```{r}
+#для бинарной поддержки
+dt_msp_rfsd_supp_bin <- merge(dt_msp_rfsd, dt_supp_bin, by = c("inn", "year"), all.x = TRUE)
+cols_to_fix <- c("fin", "cap", "prom", "optim",   
+"reduce", "type_406")
+for (col in cols_to_fix) {    # заменим NA в колонках с поддержками на 0   
+  set(dt_msp_rfsd_supp_bin, i = which(is.na(dt_msp_rfsd_supp_bin[[col]])), j = col, v = 0)
+}
+
+#для непрерывной поддержки
+dt_msp_rfsd_supp_cont <- merge(dt_msp_rfsd, dt_supp_cont, by = c("inn", "year"), all.x = TRUE)
+for (col in cols_to_fix) {    # заменим NA в колонках с поддержками на 0   
+  set(dt_msp_rfsd_supp_cont, i = which(is.na(dt_msp_rfsd_supp_cont[[col]])), j = col, v = 0)
+}
+
+```
+
+### 4.3.Сохранение сборного датасета
+
+```{r}
+#для бинарной поддержки
+write_dataset(dt_msp_rfsd_supp_bin, 
+    path = "D:\\sme-support\\Data\\ABT\\ABT0_1",
+    partitioning = "year",
+    format = "parquet",
+    existing_data_behavior = "delete_matching")
+
+#для непрерывной поддержки
+write_dataset(dt_msp_rfsd_supp_cont, 
+    path = "D:\\sme-support\\Data\\ABT\\abt_continuous",
+    partitioning = "year",
+    format = "parquet",
+    existing_data_behavior = "delete_matching")
+
+```
